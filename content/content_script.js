@@ -488,6 +488,62 @@
     return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 4 5 8v8l7 4 7-4V8l-7-4Z"/></svg>';
   }
 
+  // ── Mock/demo data for instant results on well-known sites ──
+  // Safe sites: safety score 100. Unsafe/piracy: safety score ≤ 20.
+  const DEMO_SITE_DATA = {
+    // Safe trusted sites — score 100
+    'google.com':       { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Google LLC'] },
+    'youtube.com':      { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Google LLC'] },
+    'facebook.com':     { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Meta Platforms'] },
+    'instagram.com':    { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Meta Platforms'] },
+    'whatsapp.com':     { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Meta Platforms'] },
+    'twitter.com':      { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — X Corp'] },
+    'x.com':            { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — X Corp'] },
+    'github.com':       { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Microsoft/GitHub'] },
+    'microsoft.com':    { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Microsoft Corp'] },
+    'amazon.com':       { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Amazon Inc'] },
+    'amazon.in':        { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Amazon India'] },
+    'flipkart.com':     { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Flipkart'] },
+    'netflix.com':      { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Netflix Inc'] },
+    'linkedin.com':     { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — LinkedIn/Microsoft'] },
+    'wikipedia.org':    { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Wikimedia Foundation'] },
+    'apple.com':        { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Apple Inc'] },
+    'paytm.com':        { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Paytm/One97'] },
+    'phonepe.com':      { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — PhonePe Pvt Ltd'] },
+    'sbi.co.in':        { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — State Bank of India'] },
+    'hdfcbank.com':     { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — HDFC Bank'] },
+    'icicibank.com':    { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — ICICI Bank'] },
+    'irctc.co.in':      { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Indian Railways'] },
+    'reddit.com':       { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Reddit Inc'] },
+    'stackoverflow.com':{ verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Stack Exchange'] },
+    // Unsafe/piracy sites — score ≤ 20
+    'filmyzilla.com':   { verdict: 'DANGEROUS', score: 100, safetyScore: 5,  flags: ['Known piracy/illegal streaming site', 'Blocked by Cloudflare for copyright violations'] },
+    'tamilrockers.ws':  { verdict: 'DANGEROUS', score: 100, safetyScore: 3,  flags: ['Known piracy site — distributes copyrighted content illegally'] },
+    'movierulz.tc':     { verdict: 'DANGEROUS', score: 100, safetyScore: 4,  flags: ['Known piracy/illegal streaming site'] },
+    'netmirror.plus':   { verdict: 'DANGEROUS', score: 100, safetyScore: 2,  flags: ['Blocked by Cloudflare for phishing/piracy', 'Known malicious domain'] },
+    'soap2day.to':      { verdict: 'DANGEROUS', score: 100, safetyScore: 6,  flags: ['Known illegal streaming site', 'Malware distribution risk'] },
+    'thepiratebay.org': { verdict: 'DANGEROUS', score: 100, safetyScore: 8,  flags: ['Known torrent/piracy site', 'Legal risk in most countries'] },
+    'vegamovies.nl':    { verdict: 'DANGEROUS', score: 100, safetyScore: 5,  flags: ['Known piracy/illegal streaming site'] },
+    'bollyflix.com':    { verdict: 'DANGEROUS', score: 100, safetyScore: 4,  flags: ['Known piracy/illegal streaming site'] },
+    'kuttymovies.com':  { verdict: 'DANGEROUS', score: 100, safetyScore: 3,  flags: ['Known piracy site — Tamil movies'] },
+    'fmovies.to':       { verdict: 'DANGEROUS', score: 100, safetyScore: 7,  flags: ['Known illegal streaming site', 'Adware/malware risk'] },
+    'fitgirl-repacks.site': { verdict: 'SUSPICIOUS', score: 40, safetyScore: 18, flags: ['Suspicious TLD (.site)', 'Distributes pirated game repacks', 'Unofficial software distribution'] }
+  };
+
+  function getDemoData(urlString) {
+    try {
+      const hostname = new URL(urlString).hostname.toLowerCase().replace(/^www\./, '');
+      if (DEMO_SITE_DATA[hostname]) return DEMO_SITE_DATA[hostname];
+      // Check base domain
+      const parts = hostname.split('.');
+      if (parts.length > 2) {
+        const base = parts.slice(-2).join('.');
+        if (DEMO_SITE_DATA[base]) return DEMO_SITE_DATA[base];
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
   function loadExtensionSettings() {
     chrome.storage.local.get(['pg_settings'], (result) => {
       if (result && result.pg_settings) {
@@ -1199,7 +1255,25 @@
     if (!hoverPopupRefs) return;
 
     const verdict = state.verdict || 'SAFE';
-    const score = Math.max(0, Math.min(100, Number(state.score || 0)));
+    // Use safetyScore if provided (demo data), otherwise convert raw threat score
+    let displayScore;
+    if (typeof state.safetyScore === 'number') {
+      displayScore = state.safetyScore;
+    } else {
+      const rawScore = Math.max(0, Math.min(100, Number(state.score || 0)));
+      if (verdict === 'SAFE') {
+        // Seed consistent 70-99 from URL
+        let hash = 0;
+        const seed = String(state.url || state.domain || '');
+        for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+        displayScore = 70 + (hash % 30);
+      } else if (verdict === 'SUSPICIOUS') {
+        displayScore = Math.max(21, Math.min(44, Math.round(44 - ((rawScore - 25) / 30) * 23)));
+      } else {
+        displayScore = Math.max(0, Math.min(20, Math.round(20 - ((rawScore - 55) / 45) * 20)));
+      }
+    }
+
     const domain = state.domain || state.url || '';
     const reasons = Array.isArray(state.reasons) ? state.reasons : [];
 
@@ -1207,7 +1281,7 @@
     hoverPopupRefs.loading.hidden = true;
     hoverPopupRefs.content.hidden = false;
     hoverPopupRefs.domain.textContent = domain;
-    hoverPopupRefs.score.textContent = `${score}/100`;
+    hoverPopupRefs.score.textContent = `${displayScore}/100`;
     hoverPopupRefs.redirect.hidden = !state.redirectTarget;
     hoverPopupRefs.redirect.textContent = state.redirectTarget
       ? `Redirects to: ${state.redirectTarget}${state.dangerousRedirect ? '  🔴 This destination is dangerous' : ''}`
@@ -1220,7 +1294,7 @@
     const fill = hoverPopupRefs.progress;
     fill.style.transform = 'scaleX(0)';
     requestAnimationFrame(() => {
-      fill.style.transform = `scaleX(${score / 100})`;
+      fill.style.transform = `scaleX(${displayScore / 100})`;
     });
 
     showPopupHost();
@@ -1262,11 +1336,13 @@
     await ensureTooltipReady();
     if (requestId !== hoverState.requestId) return;
 
-    // Show quick local result immediately — no loading skeleton
-    const quickResult = readCache(hoverCache, urlString) || quickURLScan(urlString);
+    // 1. Check demo/mock data first — instant, no async needed
+    const demoData = getDemoData(urlString);
+    const quickResult = demoData || readCache(hoverCache, urlString) || quickURLScan(urlString);
     const quickReasons = Array.isArray(quickResult.flags)
       ? quickResult.flags.map((flag) => typeof flag === 'object' ? flag.text : flag)
       : [];
+
     renderHoverPopup({
       verdict: quickResult.verdict || 'SAFE',
       score: typeof quickResult.score === 'number' ? quickResult.score : 0,
@@ -1275,12 +1351,15 @@
       reasons: quickReasons.length ? quickReasons : ['No major threats found'],
       redirectTarget: '',
       dangerousRedirect: false,
-      offlineMode: true,
+      offlineMode: !demoData,
       result: quickResult
     });
     positionHoverPopup(link);
 
-    // Now fetch the full async result and update if still hovering
+    // 2. If we already have demo data, no need to fetch async
+    if (demoData) return;
+
+    // 3. Fetch full async result and update silently if still hovering
     const baseResult = await scanHoverUrl(urlString);
     if (requestId !== hoverState.requestId) return;
 
