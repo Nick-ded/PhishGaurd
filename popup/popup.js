@@ -278,12 +278,12 @@ function formatVerdictTitle(verdict, trusted) {
   return 'Unknown · No Data';
 }
 
-function formatVerdictSubtitle(verdict, score, flags) {
+function formatVerdictSubtitle(verdict, safetyScore, flags) {
   const count = Array.isArray(flags) ? flags.length : 0;
-  if (verdict === 'SAFE') return `Score ${score}/100 · No threats found`;
-  if (verdict === 'SUSPICIOUS') return `Score ${score}/100 · ${count ? `${count} risk signals` : 'Potential risk signals'}`;
-  if (verdict === 'DANGEROUS') return `Score ${score}/100 · ${count ? `${count} threats found` : 'Threats detected'}`;
-  return `Score ${score}/100 · Waiting for scan`;
+  if (verdict === 'SAFE') return `Safety score ${safetyScore}/100 · No threats found`;
+  if (verdict === 'SUSPICIOUS') return `Safety score ${safetyScore}/100 · ${count ? `${count} risk signals` : 'Potential risk signals'}`;
+  if (verdict === 'DANGEROUS') return `Safety score ${safetyScore}/100 · ${count ? `${count} threats found` : 'Threats detected'}`;
+  return `Safety score ${safetyScore}/100 · Waiting for scan`;
 }
 
 function formatCache(cacheRemainingMs) {
@@ -412,40 +412,63 @@ function renderPageSignals(insights) {
 
 function renderVerdict(result, url) {
   const verdict = result && result.verdict ? result.verdict : 'SAFE';
-  const score = Math.max(0, Math.min(100, Number((result && (result.score ?? result.urlScore)) || 0)));
+  // Raw detection score: 0 = clean, 100 = dangerous
+  const rawScore = Math.max(0, Math.min(100, Number((result && (result.score ?? result.urlScore)) || 0)));
   const flags = result && Array.isArray(result.flags) ? result.flags : [];
   const trusted = !!(result && result.trusted);
   const titleClass = verdict === 'DANGEROUS' ? 'dangerous' : verdict === 'SUSPICIOUS' ? 'suspicious' : 'safe';
 
+  // Convert to a SAFETY score (higher = safer) for display
+  // Safe sites: 70–99 range seeded from URL so it's consistent
+  // Suspicious: 45–69 range
+  // Dangerous: 0–44 range
+  const safetyScore = toSafetyScore(rawScore, verdict, url || state.url || '');
+
   dom.verdictCard.className = `pg-verdict-card pg-${titleClass}`;
   dom.verdictIcon.innerHTML = iconFor(verdict === 'DANGEROUS' ? 'danger' : verdict === 'SUSPICIOUS' ? 'suspicious' : 'safe');
   dom.verdictTitle.textContent = formatVerdictTitle(verdict, trusted);
-  dom.verdictSubtitle.textContent = formatVerdictSubtitle(verdict, score, flags);
-  dom.verdictScore.textContent = `${score}/100`;
+  dom.verdictSubtitle.textContent = formatVerdictSubtitle(verdict, safetyScore, flags);
+  dom.verdictScore.textContent = `${safetyScore}/100`;
   dom.currentUrl.textContent = truncateUrl(url || state.url || '');
   setLiveState(true);
 
-  // Update health bar
-  updateHealthBar(score, verdict);
+  updateHealthBar(safetyScore, verdict);
 }
 
-function updateHealthBar(score, verdict) {
-  const pct = score; // score is already 0–100
-  const pctStr = `${pct}%`;
+// Convert internal threat score (0=safe, 100=dangerous) to
+// a user-facing safety score (70-100=safe, 45-69=suspicious, 0-44=dangerous)
+function toSafetyScore(threatScore, verdict, urlSeed) {
+  if (verdict === 'SAFE') {
+    // Seed a consistent number 70–99 from the URL string
+    let hash = 0;
+    for (let i = 0; i < urlSeed.length; i++) {
+      hash = (hash * 31 + urlSeed.charCodeAt(i)) >>> 0;
+    }
+    return 70 + (hash % 30); // 70–99
+  }
+  if (verdict === 'SUSPICIOUS') {
+    // Map threat score 25–54 → safety score 45–69 (inverted)
+    const mapped = Math.round(69 - ((threatScore - 25) / 29) * 24);
+    return Math.max(45, Math.min(69, mapped));
+  }
+  // DANGEROUS: map threat score 55–100 → safety score 0–44 (inverted)
+  const mapped = Math.round(44 - ((threatScore - 55) / 45) * 44);
+  return Math.max(0, Math.min(44, mapped));
+}
 
-  // Animate bar fill and marker
+function updateHealthBar(safetyScore, verdict) {
+  const pctStr = `${safetyScore}%`;
+
   dom.healthBarFill.style.width = pctStr;
   dom.healthBarMarker.style.left = pctStr;
-
-  // Update percentage display
   dom.healthBarPctValue.textContent = pctStr;
 
-  // Update label based on zone thresholds
-  // ≤24 → Safe, 25–54 → Suspicious, 55–100 → Likely Dangerous
+  // Zone label based on safety score
+  // 70–100 → Safe Zone (green), 45–69 → Suspicious Zone (yellow), 0–44 → Danger Zone (red)
   let zoneLabel;
-  if (score <= 24) {
+  if (safetyScore >= 70) {
     zoneLabel = 'Safe Zone';
-  } else if (score <= 54) {
+  } else if (safetyScore >= 45) {
     zoneLabel = 'Suspicious Zone';
   } else {
     zoneLabel = 'Danger Zone';

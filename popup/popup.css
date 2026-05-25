@@ -325,12 +325,12 @@ button, input {
   border-radius: 999px;
   background: linear-gradient(
     to right,
-    rgba(39, 80, 10, 0.18) 0%,
-    rgba(39, 80, 10, 0.18) 40%,
-    rgba(186, 117, 23, 0.22) 40%,
-    rgba(186, 117, 23, 0.22) 65%,
-    rgba(163, 45, 45, 0.22) 65%,
-    rgba(163, 45, 45, 0.22) 100%
+    rgba(163, 45, 45, 0.22)  0%,
+    rgba(163, 45, 45, 0.22)  45%,
+    rgba(186, 117, 23, 0.22) 45%,
+    rgba(186, 117, 23, 0.22) 70%,
+    rgba(39, 80, 10, 0.18)   70%,
+    rgba(39, 80, 10, 0.18)   100%
   );
   overflow: visible;
 }
@@ -341,13 +341,14 @@ button, input {
   top: 0;
   height: 100%;
   border-radius: 999px;
-  background: var(--green);
+  background: var(--danger);
   transition: width 0.55s cubic-bezier(0.4, 0, 0.2, 1),
               background 0.35s ease;
   max-width: 100%;
 }
 
-.pg-verdict-card.pg-safe    .pg-health-bar-fill { background: var(--green); }
+/* Fill color matches verdict zone */
+.pg-verdict-card.pg-safe       .pg-health-bar-fill { background: var(--green); }
 .pg-verdict-card.pg-suspicious .pg-health-bar-fill { background: var(--amber); }
 .pg-verdict-card.pg-dangerous  .pg-health-bar-fill { background: var(--danger); }
 
@@ -382,8 +383,8 @@ button, input {
   background: rgba(255,255,255,0.7);
   z-index: 1;
 }
-.pg-health-bar-track::before { left: 40%; }
-.pg-health-bar-track::after  { left: 65%; }
+.pg-health-bar-track::before { left: 45%; }
+.pg-health-bar-track::after  { left: 70%; }
 
 .pg-health-bar-labels {
   display: flex;
@@ -395,9 +396,9 @@ button, input {
   text-transform: uppercase;
 }
 
-.pg-hbl-safe       { color: var(--green);  flex: 0 0 40%; text-align: left; }
+.pg-hbl-danger     { color: var(--danger); flex: 0 0 45%; text-align: left; }
 .pg-hbl-suspicious { color: var(--amber);  flex: 0 0 25%; text-align: center; }
-.pg-hbl-danger     { color: var(--danger); flex: 0 0 35%; text-align: right; }
+.pg-hbl-safe       { color: var(--green);  flex: 0 0 30%; text-align: right; }
 
 .pg-health-bar-zones {
   display: flex;
@@ -408,9 +409,9 @@ button, input {
 }
 
 .pg-hbz { flex: 1; }
-.pg-hbz-safe       { text-align: left; }
+.pg-hbz-danger     { text-align: left; }
 .pg-hbz-suspicious { text-align: center; }
-.pg-hbz-danger     { text-align: right; }
+.pg-hbz-safe       { text-align: right; }
 
 .pg-health-bar-pct {
   display: flex;
@@ -427,7 +428,7 @@ button, input {
   transition: color 0.35s ease;
 }
 
-.pg-verdict-card.pg-safe    #healthBarPctValue { color: var(--green); }
+.pg-verdict-card.pg-safe       #healthBarPctValue { color: var(--green); }
 .pg-verdict-card.pg-suspicious #healthBarPctValue { color: var(--amber); }
 .pg-verdict-card.pg-dangerous  #healthBarPctValue { color: var(--danger); }
 
