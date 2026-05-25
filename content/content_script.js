@@ -323,10 +323,28 @@
     'isaimini', 'fitgirl', 'skidrow', 'crackwatch', 'steamunlock'
   ];
 
-  // Check if the current page itself is a piracy/bad site
+  // Check if the current page itself is a piracy/bad site (token OR fuzzy regex)
+  const PIRACY_FUZZY_CONTENT = [
+    /pagal\s*w[o0]r+l+d/i, /pagal\s*w[o0]r+l+ds/i, /pagal\s*new/i,
+    /ocean[\s\-_]*of[\s\-_]*game/i, /igg[\s\-_]*game/i,
+    /fitgirl[\s\-_]*repack/i, /dodi[\s\-_]*repack/i,
+    /skidrow[\s\-_]*reloaded/i, /steam[\s\-_]*unlock/i,
+    /tamil[\s\-_]*rock/i, /tamil[\s\-_]*blaster/i,
+    /movie[\s\-_]*rulz/i, /filmy[\s\-_]*zilla/i,
+    /dj[\s\-_]*punjab/i, /mr[\s\-_]*jatt/i,
+    /pirate[\s\-_]*bay/i, /soap[\s\-_]*2[\s\-_]*day/i,
+    /123[\s\-_]*movie/i, /put[\s\-_]*locker/i,
+    /khat[\s\-_]*rimaza/i, /bolly[\s\-_]*4u/i,
+    /filmy[\s\-_]*wap/i, /movies[\s\-_]*flix/i,
+    /kiss[\s\-_]*anime/i, /gogo[\s\-_]*anime/i,
+    /crack[\s\-_]*stream/i, /buff[\s\-_]*stream/i,
+    /stream[\s\-_]*east/i, /sport[\s\-_]*surge/i,
+  ];
+
   function isCurrentPageBad() {
     const pageHost = location.hostname.toLowerCase();
-    return PIRACY_TOKENS_CONTENT.some(t => pageHost.includes(t));
+    return PIRACY_TOKENS_CONTENT.some(t => pageHost.includes(t)) ||
+           PIRACY_FUZZY_CONTENT.some(re => re.test(pageHost));
   }
 
   function quickURLScan(urlString) {
@@ -365,6 +383,17 @@
         flags: ['Verified trusted domain'],
         url: parsed.href,
         trusted: true,
+        offlineMode: true
+      };
+    }
+
+    // Fuzzy piracy check — catches typosquats like pagalworrld, oceanofgames
+    if (PIRACY_FUZZY_CONTENT.some(re => re.test(hostname))) {
+      return {
+        verdict: 'DANGEROUS',
+        score: 100,
+        flags: ['Piracy/illegal site detected (variant domain)'],
+        url: parsed.href,
         offlineMode: true
       };
     }

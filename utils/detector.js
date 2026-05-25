@@ -363,6 +363,63 @@ const PhishGuardDetector = (() => {
       flags.push(`Piracy/illegal streaming site indicators: ${foundPiracy.slice(0, 3).join(', ')}`);
     }
 
+    // 7b. Fuzzy piracy brand regex — catches typosquats and variant spellings
+    // e.g. pagalworrld, pagallworlds, oceanofgames, ocean-of-games, oceanofgame
+    const PIRACY_FUZZY = [
+      /pagal\s*w[o0]r+l+d/i,          // pagalworld, pagalworrld, pagalw0rld
+      /pagal\s*w[o0]r+l+ds/i,         // pagalworlds, pagallworlds
+      /pagal\s*new/i,                  // pagalnew
+      /ocean[\s\-_]*of[\s\-_]*game/i, // ocean-of-games, oceanofgames, ocean_of_game
+      /igg[\s\-_]*game/i,             // igg-games, igggames
+      /fitgirl[\s\-_]*repack/i,       // fitgirl-repacks
+      /dodi[\s\-_]*repack/i,          // dodi-repacks
+      /skidrow[\s\-_]*reloaded/i,     // skidrowreloaded
+      /steam[\s\-_]*unlock/i,         // steamunlocked
+      /tamil[\s\-_]*rock/i,           // tamilrockers
+      /tamil[\s\-_]*blaster/i,        // tamilblasters
+      /tamil[\s\-_]*mv/i,             // tamilmv
+      /tamil[\s\-_]*gun/i,            // tamilgun
+      /tamil[\s\-_]*yogi/i,           // tamilyogi
+      /movies[\s\-_]*da/i,            // moviesda
+      /movie[\s\-_]*rulz/i,           // movierulz
+      /filmy[\s\-_]*zilla/i,          // filmyzilla
+      /dj[\s\-_]*punjab/i,            // djpunjab
+      /mr[\s\-_]*jatt/i,              // mr-jatt, mrjatt
+      /pirate[\s\-_]*bay/i,           // thepiratebay
+      /kick[\s\-_]*ass[\s\-_]*torrent/i, // kickasstorrents
+      /soap[\s\-_]*2[\s\-_]*day/i,    // soap2day
+      /123[\s\-_]*movie/i,            // 123movies
+      /put[\s\-_]*locker/i,           // putlocker
+      /go[\s\-_]*movie/i,             // gomovies
+      /f[\s\-_]*movie/i,              // fmovies
+      /watch[\s\-_]*series/i,         // watchseries
+      /look[\s\-_]*movie/i,           // lookmovie
+      /prime[\s\-_]*wire/i,           // primewire
+      /solar[\s\-_]*movie/i,          // solarmovie
+      /couch[\s\-_]*tuner/i,          // couchtuner
+      /khat[\s\-_]*rimaza/i,          // khatrimaza
+      /bolly[\s\-_]*4u/i,             // bolly4u
+      /desire[\s\-_]*movie/i,         // desiremovies
+      /filmy[\s\-_]*wap/i,            // filmywap
+      /movies[\s\-_]*flix/i,          // moviesflix
+      /movies[\s\-_]*wood/i,          // movieswood
+      /movies[\s\-_]*pur/i,           // moviespur
+      /jalsha[\s\-_]*moviez/i,        // jalshamoviez
+      /kiss[\s\-_]*anime/i,           // kissanime
+      /gogo[\s\-_]*anime/i,           // gogoanime
+      /9[\s\-_]*anime/i,              // 9anime
+      /crack[\s\-_]*stream/i,         // crackstreams
+      /buff[\s\-_]*stream/i,          // buffstreams
+      /sport[\s\-_]*surge/i,          // sportsurge
+      /hes[\s\-_]*goal/i,             // hesgoal
+      /stream[\s\-_]*east/i,          // streameast
+    ];
+    const fuzzyPiracy = PIRACY_FUZZY.find(re => re.test(hostname));
+    if (fuzzyPiracy && !foundPiracy.length) {
+      score += 100;
+      flags.push('Piracy/illegal site detected (variant domain)');
+    }
+
     // 8. Excessive subdomains
     const subdomainCount = hostname.split('.').length - 2;
     if (subdomainCount >= 3) {
