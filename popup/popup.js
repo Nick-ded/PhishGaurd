@@ -147,7 +147,39 @@ const SUSPICIOUS_TLDS_POPUP = [
   '.xyz', '.tk', '.ml', '.ga', '.cf', '.gq', '.pw', '.top',
   '.click', '.link', '.online', '.site', '.website', '.space',
   '.loan', '.work', '.party', '.review', '.win', '.bid',
-  '.stream', '.download', '.racing'
+  '.stream', '.download', '.racing',
+  '.gg', '.plus', '.fun', '.vip', '.cc', '.to', '.sx', '.ws',
+  '.buzz', '.surf', '.monster', '.cyou', '.cfd'
+];
+
+// Known bad domains — instant DANGEROUS (mirrors detector.js)
+const KNOWN_BAD_DOMAINS_POPUP = new Set([
+  'netmirror.plus', 'netmirror.gg', 'netmirror.net',
+  'fmovies.to', 'fmovies.ps', 'fmovies.wtf',
+  'gomovies.sx', 'gomovies.to', '123movies.to', '123movies.fun',
+  'putlocker.vip', 'soap2day.to', 'soap2day.ac',
+  'yts.mx', 'rarbg.to', 'thepiratebay.org',
+  'movierulz.tc', 'tamilrockers.ws', 'tamilrockers.net',
+  'filmyzilla.com', 'filmyzilla.pro', 'bollyflix.com',
+  'vegamovies.nl', 'vegamovies.in', 'kuttymovies.com',
+  'tamilyogi.com', 'moviesda.com', 'downloadhub.in',
+  'worldfree4u.com', 'mp4moviez.com', 'afilmywap.com',
+  'rdxhd.com', 'skymovies.in', 'uwatchfree.com',
+  'paytm-kyc.com', 'paytm-verify.com', 'sbi-netbanking.xyz',
+  'hdfc-kyc.xyz', 'icici-verify.xyz', 'amazon-offer.xyz',
+  'jio-offer.com', 'irctc-refund.com', 'uidai-update.com'
+]);
+
+// Piracy tokens — any match = DANGEROUS
+const PIRACY_TOKENS_POPUP = [
+  'movierulz', 'filmyzilla', 'bollyflix', 'vegamovies',
+  'kuttymovies', 'tamilyogi', 'moviesda', 'downloadhub',
+  'worldfree', 'mp4moviez', 'afilmywap', 'rdxhd',
+  'fmovies', 'gomovies', '123movies', 'putlocker',
+  'soap2day', 'solarmovie', 'primewire', 'watchseries',
+  'lookmovie', 'netmirror', 'iosmirror', 'tamilrockers',
+  'piratebay', 'kickasstorrent', 'rarbg', 'jiorockers',
+  'isaimini', 'cinemavilla', 'skymovies', 'pagalworld'
 ];
 
 function getBaseDomainPopup(hostname) {
@@ -169,8 +201,31 @@ function quickURLScan(urlString) {
 
   const hostname = url.hostname.toLowerCase();
   const baseDomain = getBaseDomainPopup(hostname);
+
+  // 1. Trusted whitelist
   if (TRUSTED_DOMAINS.has(baseDomain)) {
     return { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain'], trusted: true };
+  }
+
+  // 2. Known bad domain — instant DANGEROUS
+  if (KNOWN_BAD_DOMAINS_POPUP.has(baseDomain) || KNOWN_BAD_DOMAINS_POPUP.has(hostname)) {
+    return {
+      verdict: 'DANGEROUS',
+      score: 100,
+      flags: ['Known malicious or piracy domain'],
+      trusted: false
+    };
+  }
+
+  // 3. Piracy tokens in domain — instant DANGEROUS
+  const foundPiracy = PIRACY_TOKENS_POPUP.filter(t => hostname.includes(t));
+  if (foundPiracy.length > 0) {
+    return {
+      verdict: 'DANGEROUS',
+      score: 100,
+      flags: [`Piracy/illegal streaming site: ${foundPiracy.slice(0, 2).join(', ')}`],
+      trusted: false
+    };
   }
 
   let score = 0;
@@ -203,7 +258,6 @@ function quickURLScan(urlString) {
   }
 
   // Brand impersonation — word-boundary check to avoid false positives
-  // e.g. 'pan' must NOT match 'japan', 'vi' must NOT match 'video'
   for (const [brand, legitimateDomain] of Object.entries(IMPERSONATED_BRANDS)) {
     const brandRe = new RegExp(`(^|[^a-z0-9])${brand}([^a-z0-9]|$)`);
     if (brandRe.test(hostname) && !hostname.endsWith(legitimateDomain)) {
@@ -514,15 +568,36 @@ async function loadCurrentTab() {
     state.tabId = tab.id;
     state.url = tab.url || '';
 
+    // Show a quick local scan immediately so the popup never shows stale 0/100
+    if (isRenderableUrl(state.url)) {
+      const localResult = quickURLScan(state.url);
+      renderVerdict(localResult, state.url);
+    }
+
     const [verdictResponse, statsResponse, insightsResponse] = await Promise.all([
       safeSendMessage({ type: 'GET_VERDICT', url: state.url }),
       safeSendMessage({ type: 'GET_PAGE_STATS', tabId: state.tabId }),
       safeSendTabMessage(state.tabId, { type: 'GET_PAGE_INSIGHTS' })
     ]);
 
-    const scanResult = verdictResponse && verdictResponse.result
+    // If service worker has no cached result yet, request a fresh scan
+    // and use the local quickURLScan result in the meantime
+    let scanResult = verdictResponse && verdictResponse.result
       ? verdictResponse.result
-      : (isRenderableUrl(state.url) ? quickURLScan(state.url) : neutralResult());
+      : null;
+
+    if (!scanResult) {
+      // Trigger a fresh page scan via the content script
+      safeSendTabMessage(state.tabId, { type: 'REQUEST_PAGE_DATA' }).catch(() => {});
+      // Use local scan as the displayed result
+      scanResult = isRenderableUrl(state.url) ? quickURLScan(state.url) : neutralResult();
+    }
+
+    // If the cached result is a pending/incomplete scan, prefer local scan
+    if (scanResult.pending) {
+      scanResult = isRenderableUrl(state.url) ? quickURLScan(state.url) : neutralResult();
+    }
+
     state.verdict = scanResult;
     state.pageStats = statsResponse && statsResponse.result ? statsResponse.result : null;
     state.pageInsights = insightsResponse || null;
@@ -541,6 +616,17 @@ async function loadCurrentTab() {
       tlsValid: state.url.startsWith('https:')
     });
     renderPageSignals(state.pageInsights);
+
+    // Poll once after 1.5s in case the full scan completes after popup opens
+    setTimeout(() => {
+      safeSendMessage({ type: 'GET_VERDICT', url: state.url }).then((resp) => {
+        if (resp && resp.result && !resp.result.pending && resp.result.verdict) {
+          renderVerdict(resp.result, state.url);
+          state.verdict = resp.result;
+        }
+      }).catch(() => {});
+    }, 1500);
+
   } catch {
     setLiveState(false);
     applyFallback(state.url);
