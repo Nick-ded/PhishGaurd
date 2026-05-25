@@ -7,6 +7,8 @@ importScripts('../utils/detector.js');
 
 // ── In-memory cache for scan results ────────────────────────
 const verdictCache = new Map();
+const pageStatsByTab = new Map();
+const serpStatsByTab = new Map();
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 const MAX_CACHE_ENTRIES = 200;
 
@@ -63,6 +65,50 @@ function rememberCache(urlString, result) {
     if (oldestKey === undefined) break;
     verdictCache.delete(oldestKey);
   }
+}
+
+function isGoogleSerpUrl(urlString) {
+  return /^https:\/\/(www\.)?google\.(com|co\.in)\/search/.test(String(urlString || ''));
+}
+
+function setSerpBadge(tabId, dangerCount, suspiciousCount) {
+  let badgeText = '✓';
+  let badgeColor = '#3B6D11';
+
+  if (Number(dangerCount || 0) > 0) {
+    badgeText = `${Number(dangerCount)}⚠`;
+    badgeColor = '#E24B4A';
+  } else if (Number(suspiciousCount || 0) > 0) {
+    badgeText = `${Number(suspiciousCount)}?`;
+    badgeColor = '#BA7517';
+  }
+
+  chrome.action.setBadgeText({ text: badgeText, tabId });
+  chrome.action.setBadgeBackgroundColor({ color: badgeColor, tabId });
+}
+
+function storePageStats(tabId, urlString, pageData, result) {
+  if (!tabId) return;
+
+  const protocol = pageData?.protocol || (() => {
+    try { return new URL(urlString).protocol; } catch { return 'https:'; }
+  })();
+
+  const cacheEntry = urlString ? verdictCache.get(urlString) : null;
+  const cacheRemainingMs = cacheEntry ? Math.max(0, CACHE_TTL - (Date.now() - cacheEntry.timestamp)) : 0;
+
+  pageStatsByTab.set(tabId, {
+    links: Number(pageData?.linkCount ?? pageData?.totalLinks ?? 0),
+    externalLinks: Number(pageData?.externalLinkCount ?? 0),
+    ads: Number(pageData?.adCount ?? 0),
+    suspicious: Number(result?.verdict === 'DANGEROUS' ? 1 : result?.verdict === 'SUSPICIOUS' ? 1 : 0),
+    protocol,
+    hasSensitiveForms: Number(pageData?.sensitiveFormCount ?? (pageData?.hasPasswordField || pageData?.hasOTPField ? 1 : 0)),
+    cacheRemainingMs,
+    tlsValid: typeof pageData?.tlsValid === 'boolean' ? pageData.tlsValid : protocol === 'https:',
+    updatedAt: Date.now(),
+    url: urlString
+  });
 }
 
 // ── Badge update helper ────────────────────────────────────────
@@ -259,6 +305,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const tabId = sender.tab?.id;
 
     fullScan(url, pageData, tabId).then(result => {
+      storePageStats(tabId, url, pageData, result);
       sendResponse({ success: true, result });
 
       // If dangerous, notify content script to show overlay
@@ -271,6 +318,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
 
     return true; // async response
+  }
+
+  if (message.type === 'PAGE_SERP_STATS') {
+    const tabId = sender.tab?.id;
+    if (tabId) {
+      serpStatsByTab.set(tabId, {
+        dangerCount: Number(message.dangerCount || 0),
+        suspiciousCount: Number(message.suspiciousCount || 0),
+        timestamp: Date.now()
+      });
+
+      chrome.tabs.get(tabId, (tab) => {
+        if (!tab || !tab.url || !isGoogleSerpUrl(tab.url)) return;
+        setSerpBadge(tabId, message.dangerCount, message.suspiciousCount);
+      });
+    }
+
+    sendResponse({ success: true });
+    return true;
   }
 
   if (message.type === 'HOVER_LINK') {
@@ -287,7 +353,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'GET_CURRENT_VERDICT') {
+  if (message.type === 'GET_CURRENT_VERDICT' || message.type === 'GET_VERDICT') {
+    if (message.url) {
+      const cached = verdictCache.get(message.url);
+      sendResponse({ result: cached ? cached.result : null, stats });
+      return true;
+    }
+
     const tabId = sender.tab?.id;
     if (!tabId) { sendResponse({ result: null }); return; }
 
@@ -295,6 +367,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const cached = verdictCache.get(tab.url);
       sendResponse({ result: cached ? cached.result : null, stats });
     });
+    return true;
+  }
+
+  if (message.type === 'GET_PAGE_STATS') {
+    const tabId = message.tabId || sender.tab?.id;
+    if (!tabId) {
+      sendResponse({ result: null });
+      return true;
+    }
+
+    sendResponse({ result: pageStatsByTab.get(tabId) || null });
     return true;
   }
 
@@ -346,6 +429,13 @@ chrome.webNavigation.onCompleted.addListener((details) => {
 chrome.tabs.onActivated.addListener(({ tabId }) => {
   chrome.tabs.get(tabId, (tab) => {
     if (!tab || !tab.url) return;
+
+    if (isGoogleSerpUrl(tab.url) && serpStatsByTab.has(tabId)) {
+      const serpStats = serpStatsByTab.get(tabId);
+      setSerpBadge(tabId, serpStats.dangerCount, serpStats.suspiciousCount);
+      return;
+    }
+
     const cached = verdictCache.get(tab.url);
     if (cached) {
       updateBadge(tabId, cached.result.verdict);

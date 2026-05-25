@@ -9,6 +9,7 @@
   const HOVER_DELAY_MS = 600;
   const CACHE_LIMIT = 200;
   const CACHE_TTL = 10 * 60 * 1000;
+  const GOOGLE_SERP_RE = /^https:\/\/(www\.)?google\.(com|co\.in)\/search/;
 
   const TRUSTED_DOMAINS = new Set([
     'google.com', 'youtube.com', 'facebook.com', 'twitter.com',
@@ -42,6 +43,9 @@
   let hoverPopupRoot = null;
   let hoverPopupRefs = null;
   let hoverStylesPromise = null;
+  let serpScanTimer = null;
+  let serpObserver = null;
+  let serpObserverTarget = null;
 
   const hoverState = {
     timer: null,
@@ -51,6 +55,14 @@
     visible: false,
     lastPlacement: null,
     mutateTimer: null
+  };
+
+  const serpState = {
+    requestId: 0,
+    inFlight: 0,
+    queue: [],
+    observing: false,
+    isScanning: false
   };
 
   function escHtml(str) {
@@ -286,6 +298,22 @@
   }
 
   function extractPageData() {
+    const links = Array.from(document.querySelectorAll('a[href]'));
+    const externalLinkCount = links.filter((link) => {
+      const href = getLinkUrl(link);
+      if (!href) return false;
+      try {
+        const parsed = new URL(href);
+        return parsed.hostname && parsed.hostname !== location.hostname;
+      } catch {
+        return false;
+      }
+    }).length;
+
+    const adCount = document.querySelectorAll(
+      'iframe[src*="doubleclick"], ins.adsbygoogle, [id*="google_ads"], div[data-ad-slot]'
+    ).length;
+
     const bodyText = document.body
       ? (document.body.innerText || document.body.textContent || '').slice(0, 5000)
       : '';
@@ -300,8 +328,14 @@
       title: document.title || '',
       bodyText,
       forms: formFields,
+      linkCount: links.length,
+      externalLinkCount,
+      adCount,
+      sensitiveFormCount: (document.querySelectorAll('input[type="password"]').length || 0) + (formFields.some((field) => /otp|pin|code/.test(field)) ? 1 : 0),
       hasPasswordField: !!document.querySelector('input[type="password"]'),
       hasOTPField: formFields.some((field) => /otp|pin|code/.test(field)),
+      protocol: location.protocol,
+      tlsValid: location.protocol === 'https:',
       url: window.location.href
     };
   }
@@ -324,6 +358,7 @@
     const scripts = Array.from(document.querySelectorAll('script'));
     const iframes = Array.from(document.querySelectorAll('iframe'));
     const metaRefresh = Array.from(document.querySelectorAll('meta[http-equiv="refresh" i]'));
+    const adSelectors = 'iframe[src*="doubleclick"], ins.adsbygoogle, [id*="google_ads"], div[data-ad-slot]';
 
     let adScripts = 0;
     let trackingPixels = 0;
@@ -352,6 +387,18 @@
 
     return {
       totalLinks: links.length,
+      linkCount: links.length,
+      adCount: document.querySelectorAll(adSelectors).length,
+      externalLinkCount: links.filter((link) => {
+        const url = getLinkUrl(link);
+        if (!url) return false;
+        try {
+          const parsed = new URL(url);
+          return parsed.hostname && parsed.hostname !== location.hostname;
+        } catch {
+          return false;
+        }
+      }).length,
       adScripts,
       trackingPixels,
       redirectLinks,
@@ -401,6 +448,313 @@
       finalVerdict: redirect.verdict,
       dangerousRedirect: redirect.verdict === 'DANGEROUS'
     };
+  }
+
+  function getVerdictTier(verdict) {
+    if (verdict === 'DANGEROUS') return 'danger';
+    if (verdict === 'SUSPICIOUS') return 'warn';
+    return 'safe';
+  }
+
+  function getVerdictBadgeText(verdict) {
+    if (verdict === 'DANGEROUS') return '✕ DANGER';
+    if (verdict === 'SUSPICIOUS') return '⚠ SUSP';
+    return 'SAFE';
+  }
+
+  function getVerdictIconSvg(tier) {
+    if (tier === 'danger') {
+      return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 2 3 6.5V12c0 5.1 3.5 9.8 9 10 5.5-.2 9-4.9 9-10V6.5L12 2Zm0 5.5c.6 0 1 .4 1 1v4.2c0 .6-.4 1-1 1s-1-.4-1-1V8.5c0-.6.4-1 1-1Zm0 9c-.8 0-1.4-.6-1.4-1.4s.6-1.4 1.4-1.4 1.4.6 1.4 1.4-.6 1.4-1.4 1.4Z"/></svg>';
+    }
+
+    if (tier === 'warn') {
+      return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M1.8 20.5h20.4L12 2.5 1.8 20.5Zm10.2-3.1c-.8 0-1.4-.6-1.4-1.4s.6-1.4 1.4-1.4 1.4.6 1.4 1.4-.6 1.4-1.4 1.4Zm1-3.7h-2l-.2-5.5h2.4l-.2 5.5Z"/></svg>';
+    }
+
+    return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 2 4 5v6c0 5 3.2 9.4 8 11 4.8-1.6 8-6 8-11V5l-8-3Zm-1 12.4-2.6-2.6 1.4-1.4L11 11.6l4.2-4.2 1.4 1.4-5.6 5.6Z"/></svg>';
+  }
+
+  function normalizeFlagText(flag) {
+    if (!flag) return '';
+    if (typeof flag === 'string') return flag;
+    if (typeof flag === 'object' && flag.text) return String(flag.text);
+    return String(flag);
+  }
+
+  function getTooltipChips(flags) {
+    const unique = [];
+    const seen = new Set();
+
+    flags.forEach((flag) => {
+      const text = normalizeFlagText(flag).trim();
+      if (!text || seen.has(text)) return;
+      seen.add(text);
+      unique.push(text);
+    });
+
+    return unique.slice(0, 3);
+  }
+
+  function buildBadgeMarkup(result) {
+    const verdict = result.verdict || 'SAFE';
+    const tier = getVerdictTier(verdict);
+    const score = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+
+    return `
+      <span class="pg-badge pg-${tier}" aria-hidden="true">
+        ${getVerdictIconSvg(tier)}
+        <span>${escHtml(getVerdictBadgeText(verdict))}</span>
+        <span>·</span>
+        <span>${score}</span>
+      </span>
+    `;
+  }
+
+  function buildTooltipMarkup(result, domain) {
+    const verdict = result.verdict || 'SAFE';
+    const tier = getVerdictTier(verdict);
+    const score = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const chips = getTooltipChips(result.flags || []);
+
+    return `
+      <span class="pg-badge-tooltip-line1">
+        <span class="pg-badge pg-${tier}">${getVerdictIconSvg(tier)}<span>${escHtml(getVerdictBadgeText(verdict))}</span></span>
+        <span class="pg-badge-tooltip-score">Score ${score}/100</span>
+      </span>
+      <div class="pg-badge-tooltip-domain">${escHtml(domain || '')}</div>
+      <div class="pg-badge-tooltip-chips">
+        ${chips.length
+          ? chips.map((chip) => `<span class="pg-badge-chip">${escHtml(chip)}</span>`).join('')
+          : '<span class="pg-badge-chip pg-badge-chip-muted">No major threats found</span>'}
+      </div>
+    `;
+  }
+
+  function ensureBadgeWrap(link) {
+    if (!link || !link.parentNode) return null;
+
+    const urlString = getLinkUrl(link);
+    if (!urlString) return null;
+
+    const existing = link.nextElementSibling;
+    if (existing && existing.classList && existing.classList.contains('pg-link-badge-wrap')) {
+      return existing;
+    }
+
+    const wrap = document.createElement('span');
+    wrap.className = 'pg-link-badge-wrap';
+    wrap.setAttribute('aria-hidden', 'true');
+
+    const result = quickURLScan(urlString);
+    const tier = getVerdictTier(result.verdict || 'SAFE');
+
+    const badge = document.createElement('span');
+    badge.className = 'pg-badge';
+    badge.classList.add(`pg-${tier}`);
+    badge.innerHTML = `${getVerdictIconSvg(tier)}<span>${escHtml(getVerdictBadgeText(result.verdict || 'SAFE'))}</span><span>·</span><span>${Math.max(0, Math.min(100, Number(result.score || 0)))}</span>`;
+
+    const tooltip = document.createElement('span');
+    tooltip.className = 'pg-badge-tooltip';
+    tooltip.setAttribute('role', 'tooltip');
+    tooltip.setAttribute('aria-hidden', 'true');
+    tooltip.innerHTML = buildTooltipMarkup(result, getDisplayDomain(link.href || getLinkUrl(link)));
+
+    wrap.appendChild(badge);
+    wrap.appendChild(tooltip);
+    link.insertAdjacentElement('afterend', wrap);
+
+    const showTooltip = () => {
+      wrap.classList.add('pg-tooltip-open');
+    };
+
+    const hideTooltip = () => {
+      wrap.classList.remove('pg-tooltip-open');
+    };
+
+    badge.addEventListener('pointerenter', () => {
+      showTooltip();
+      showLinkBadgeTooltip(link, wrap).catch(() => {});
+    });
+    badge.addEventListener('focus', () => {
+      showTooltip();
+      showLinkBadgeTooltip(link, wrap).catch(() => {});
+    });
+    wrap.addEventListener('pointerleave', hideTooltip);
+    wrap.addEventListener('focusout', hideTooltip);
+
+    wrap.dataset.gaBadgeFor = urlString;
+    wrap.dataset.gaBadgeInitialized = 'true';
+    return wrap;
+  }
+
+  async function showLinkBadgeTooltip(link, wrap) {
+    if (!link || !wrap) return;
+    const urlString = getLinkUrl(link);
+    if (!urlString) return;
+
+    const result = await scanHoverUrl(urlString);
+    if (!result || !wrap.isConnected || wrap.dataset.gaBadgeFor !== urlString) return;
+
+    const score = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const tier = getVerdictTier(result.verdict || 'SAFE');
+    const badge = wrap.querySelector('.pg-badge');
+    const tooltip = wrap.querySelector('.pg-badge-tooltip');
+
+    if (badge) {
+      badge.className = `pg-badge pg-${tier}`;
+      badge.innerHTML = `${getVerdictIconSvg(tier)}<span>${escHtml(getVerdictBadgeText(result.verdict || 'SAFE'))}</span><span>·</span><span>${score}</span>`;
+    }
+
+    if (tooltip) {
+      tooltip.innerHTML = buildTooltipMarkup(result, getDisplayDomain(urlString));
+    }
+  }
+
+  function extractGoogleSerpUrl(container) {
+    if (!container) return '';
+
+    const dataUrl = container.getAttribute('data-url') || container.dataset.url || '';
+    if (dataUrl) {
+      const parsedDataUrl = ensureUrl(dataUrl);
+      if (parsedDataUrl) return parsedDataUrl.href;
+    }
+
+    const cite = container.querySelector('cite');
+    const citeText = cite ? cite.textContent.trim() : '';
+    const citeUrl = ensureUrl(citeText);
+    if (citeUrl) return citeUrl.href;
+
+    const anchor = Array.from(container.querySelectorAll('a[href]')).find((el) => getLinkUrl(el));
+    if (anchor) return getLinkUrl(anchor);
+
+    return '';
+  }
+
+  function getGoogleSerpStatusMarkup(result) {
+    const verdict = result.verdict || 'SAFE';
+    const tier = getVerdictTier(verdict);
+    const score = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const chips = getTooltipChips(result.flags || []).slice(0, 2);
+    const label = verdict === 'DANGEROUS' ? 'Dangerous' : verdict === 'SUSPICIOUS' ? 'Suspicious' : 'SAFE';
+
+    return `
+      ${getVerdictIconSvg(tier)} ${label} · Score ${score}${chips.length ? ` · ${chips.map((chip) => escHtml(chip)).join(' · ')}` : ''}
+    `;
+  }
+
+  function applyGoogleSerpVerdict(container, urlString, result) {
+    if (!container || !urlString || !result) return;
+
+    const existingStatus = container.querySelector(':scope > .pg-serp-status');
+    if (existingStatus) existingStatus.remove();
+
+    container.classList.add('pg-serp-result');
+    container.classList.remove('pg-serp-safe', 'pg-serp-warn', 'pg-serp-danger');
+    container.classList.add(`pg-serp-${getVerdictTier(result.verdict || 'SAFE')}`);
+
+    const status = document.createElement('div');
+    status.innerHTML = getGoogleSerpStatusMarkup(result);
+    status.className = `pg-serp-status pg-serp-status-${getVerdictTier(result.verdict || 'SAFE')}`;
+    status.dataset.pgSerpFor = urlString;
+
+    const cite = container.querySelector('cite');
+    if (cite && cite.parentElement) {
+      cite.insertAdjacentElement('afterend', status);
+    } else {
+      container.appendChild(status);
+    }
+  }
+
+  async function scanGoogleSerpContainer(container, serpCounts) {
+    if (!container) return;
+
+    const urlString = extractGoogleSerpUrl(container);
+    if (!urlString) return;
+
+    const result = await scanHoverUrl(urlString);
+    if (!result || !container.isConnected) return;
+
+    applyGoogleSerpVerdict(container, urlString, result);
+
+    if (result.verdict === 'DANGEROUS') serpCounts.dangerCount++;
+    else if (result.verdict === 'SUSPICIOUS') serpCounts.suspiciousCount++;
+  }
+
+  async function scanGoogleSerpPage() {
+    if (!GOOGLE_SERP_RE.test(location.href)) return;
+
+    const requestId = ++serpState.requestId;
+    const serpCounts = { dangerCount: 0, suspiciousCount: 0 };
+    const containers = Array.from(document.querySelectorAll('div.g, div[data-sokoban-grid]'));
+    const items = containers.filter((container) => extractGoogleSerpUrl(container));
+
+    let index = 0;
+    let active = 0;
+    serpState.isScanning = true;
+
+    const runNext = (resolve) => {
+      if (requestId !== serpState.requestId) {
+        serpState.isScanning = false;
+        resolve();
+        return;
+      }
+
+      while (active < 10 && index < items.length) {
+        const container = items[index++];
+        active++;
+
+        Promise.resolve(scanGoogleSerpContainer(container, serpCounts))
+          .catch(() => {})
+          .finally(() => {
+            active--;
+            window.setTimeout(() => runNext(resolve), 50);
+          });
+      }
+
+      if (index >= items.length && active === 0) {
+        try {
+          chrome.runtime.sendMessage({
+            type: 'PAGE_SERP_STATS',
+            dangerCount: serpCounts.dangerCount,
+            suspiciousCount: serpCounts.suspiciousCount
+          });
+        } catch {
+          // Ignore messaging failures in page-scoped observers.
+        }
+        serpState.isScanning = false;
+        resolve();
+      }
+    };
+
+    await new Promise((resolve) => runNext(resolve));
+  }
+
+  function scheduleGoogleSerpScan() {
+    clearTimeout(serpScanTimer);
+    serpScanTimer = setTimeout(() => {
+      scanGoogleSerpPage().catch(() => {});
+    }, 50);
+  }
+
+  function observeGoogleSerp() {
+    if (!GOOGLE_SERP_RE.test(location.href)) return;
+
+    const target = document.querySelector('#search') || document.querySelector('#rso') || document.body;
+    if (!target) return;
+
+    if (serpObserver && serpObserverTarget === target) return;
+
+    if (serpObserver) {
+      serpObserver.disconnect();
+    }
+
+    serpObserverTarget = target;
+    serpObserver = new MutationObserver(() => {
+      if (serpState.isScanning) return;
+      scheduleGoogleSerpScan();
+    });
+    serpObserver.observe(target, { childList: true, subtree: true });
+    scheduleGoogleSerpScan();
   }
 
   function createTooltipHost() {
@@ -797,36 +1151,12 @@
     link.dataset.gaDecoratedUrl = urlString;
 
     const existing = link.nextElementSibling;
-    if (existing && existing.classList && existing.classList.contains('ga-link-badge-wrap') && existing.dataset.gaBadgeFor === urlString) {
-      return;
-    }
-
-    if (existing && existing.classList && existing.classList.contains('ga-link-badge-wrap')) {
+    if (existing && existing.classList && existing.classList.contains('pg-link-badge-wrap')) {
+      if (existing.dataset.gaBadgeFor === urlString) return;
       existing.remove();
     }
 
-    const meta = getLinkVerdictMeta(urlString);
-    const wrap = document.createElement('span');
-    wrap.className = 'ga-link-badge-wrap';
-    wrap.dataset.gaBadgeFor = urlString;
-
-    if (meta.isAd) {
-      wrap.appendChild(createBadge('📢', 'ga-link-badge ga-link-badge-ad', 'This is an advertisement link'));
-    }
-
-    if (meta.isRedirect) {
-      const redirectBadge = createBadge('→', 'ga-link-badge ga-link-badge-redirect', 'Preview the final destination');
-      redirectBadge.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        previewRedirectFromBadge(link, urlString, redirectBadge).catch(() => {});
-      });
-      wrap.appendChild(redirectBadge);
-    }
-
-    if (wrap.childElementCount > 0) {
-      link.insertAdjacentElement('afterend', wrap);
-    }
+    ensureBadgeWrap(link);
   }
 
   function attachLinkHover(link) {
@@ -835,24 +1165,6 @@
     if (!urlString) return;
 
     link.dataset.gaHoverAttached = 'true';
-
-    link.addEventListener('pointerenter', (event) => {
-      scheduleHover(link, event);
-    });
-
-    link.addEventListener('focus', (event) => {
-      scheduleHover(link, event);
-    });
-
-    link.addEventListener('pointerleave', () => {
-      clearTimeout(hoverState.timer);
-      hideHoverPopup();
-    });
-
-    link.addEventListener('blur', () => {
-      clearTimeout(hoverState.timer);
-      hideHoverPopup();
-    });
 
     link.addEventListener('click', (event) => {
       const href = getLinkUrl(link);
@@ -1004,6 +1316,7 @@
     clearTimeout(hoverState.mutateTimer);
     hoverState.mutateTimer = setTimeout(() => {
       scanAndDecorateLinks();
+      observeGoogleSerp();
     }, 250);
   }
 
@@ -1016,6 +1329,7 @@
 
     observer.observe(document.body, { childList: true, subtree: true });
     scanAndDecorateLinks();
+    observeGoogleSerp();
   }
 
   async function scanAllLinksNow() {
@@ -1050,10 +1364,12 @@
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {
         observeLinks();
+        observeGoogleSerp();
         runPageScan();
       });
     } else {
       observeLinks();
+      observeGoogleSerp();
       runPageScan();
     }
   }

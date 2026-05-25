@@ -1,7 +1,4 @@
-// GuardianAI - popup.js
-// Modified: Rebuilt the popup around the dashboard layout and wired the new sections to the existing scan flow.
-// New additions: Session stats, current page verdict card, link list, redirect preview card, ads summary, and dashboard mode.
-// Unchanged: Inline URL scanning still uses the same local heuristics fallback as before.
+'use strict';
 
 const TRUSTED_DOMAINS = new Set([
   'google.com', 'youtube.com', 'facebook.com', 'twitter.com',
@@ -11,104 +8,121 @@ const TRUSTED_DOMAINS = new Set([
   'microsoft.com', 'apple.com'
 ]);
 
-const VERDICT_CONFIG = {
-  SAFE: { icon: '✅', label: 'SAFE', cssClass: 'safe' },
-  SUSPICIOUS: { icon: '⚠️', label: 'SUSPICIOUS', cssClass: 'suspicious' },
-  DANGEROUS: { icon: '🔴', label: 'DANGEROUS', cssClass: 'dangerous' }
-};
-
 const dom = {
-  currentPageCard: document.getElementById('currentPageCard'),
-  currentPageLoading: document.getElementById('currentPageLoading'),
-  currentPageContent: document.getElementById('currentPageContent'),
-  currentPageVerdictBanner: document.getElementById('currentPageVerdictBanner'),
-  currentPageVerdictIcon: document.getElementById('currentPageVerdictIcon'),
-  currentPageVerdictLabel: document.getElementById('currentPageVerdictLabel'),
-  currentPageVerdictScore: document.getElementById('currentPageVerdictScore'),
-  currentPageDomain: document.getElementById('currentPageDomain'),
-  currentPageReasons: document.getElementById('currentPageReasons'),
-  currentBlockBtn: document.getElementById('currentBlockBtn'),
-  offlinePill: document.getElementById('offlinePill'),
-  extensionStatusDot: document.getElementById('extensionStatusDot'),
-  extensionStatusText: document.getElementById('extensionStatusText'),
-  statScanned: document.getElementById('statScanned'),
-  statBlocked: document.getElementById('statBlocked'),
-  statHindi: document.getElementById('statHindi'),
-  pageLinksList: document.getElementById('pageLinksList'),
-  scanAllBtn: document.getElementById('scanAllBtn'),
-  redirectPreviewCard: document.getElementById('redirectPreviewCard'),
-  redirectPreviewClose: document.getElementById('redirectPreviewClose'),
-  redirectOriginal: document.getElementById('redirectOriginal'),
-  redirectFinal: document.getElementById('redirectFinal'),
-  redirectVerdict: document.getElementById('redirectVerdict'),
-  redirectPreviewOpen: document.getElementById('redirectPreviewOpen'),
-  adsSection: document.getElementById('adsSection'),
-  adsHideBtn: document.getElementById('adsHideBtn'),
-  adScriptsCount: document.getElementById('adScriptsCount'),
-  adPixelsCount: document.getElementById('adPixelsCount'),
-  adRedirectCount: document.getElementById('adRedirectCount'),
-  blockAdsBtn: document.getElementById('blockAdsBtn'),
-  reportPageBtn: document.getElementById('reportPageBtn'),
-  copyReportBtn: document.getElementById('copyReportBtn'),
+  headerShield: document.getElementById('headerShield'),
+  urlGlobe: document.getElementById('urlGlobe'),
+  currentUrl: document.getElementById('currentUrl'),
+  liveDot: document.getElementById('liveDot'),
+  liveLabel: document.getElementById('liveLabel'),
+  verdictCard: document.getElementById('verdictCard'),
+  verdictIcon: document.getElementById('verdictIcon'),
+  verdictTitle: document.getElementById('verdictTitle'),
+  verdictSubtitle: document.getElementById('verdictSubtitle'),
+  verdictScore: document.getElementById('verdictScore'),
+  statLinks: document.getElementById('statLinks'),
+  statAds: document.getElementById('statAds'),
+  statSuspicious: document.getElementById('statSuspicious'),
+  protocolIcon: document.getElementById('protocolIcon'),
+  protocolValue: document.getElementById('protocolValue'),
+  tlsIcon: document.getElementById('tlsIcon'),
+  tlsValue: document.getElementById('tlsValue'),
+  linksIcon: document.getElementById('linksIcon'),
+  externalLinksValue: document.getElementById('externalLinksValue'),
+  adsIcon: document.getElementById('adsIcon'),
+  adsValue: document.getElementById('adsValue'),
+  formsIcon: document.getElementById('formsIcon'),
+  formsValue: document.getElementById('formsValue'),
+  cacheIcon: document.getElementById('cacheIcon'),
+  cacheValue: document.getElementById('cacheValue'),
+  rescanBtn: document.getElementById('rescanBtn'),
   settingsBtn: document.getElementById('settingsBtn'),
-  settingsActionBtn: document.getElementById('settingsActionBtn'),
-  dashboardBtn: document.getElementById('dashboardBtn'),
+  reportBtn: document.getElementById('reportBtn'),
   settingsPanel: document.getElementById('settingsPanel'),
   settingsClose: document.getElementById('settingsClose'),
-  settingsDone: document.getElementById('settingsDone'),
-  scanBtn: document.getElementById('scanBtn'),
-  urlInput: document.getElementById('urlInput'),
-  inlineResult: document.getElementById('inlineResult')
+  settingsSave: document.getElementById('settingsSave'),
+  toggleHover: document.getElementById('toggleHover'),
+  toggleOverlay: document.getElementById('toggleOverlay'),
+  toggleHindi: document.getElementById('toggleHindi'),
+  toggleStrict: document.getElementById('toggleStrict')
 };
 
 const state = {
-  activeTabId: null,
-  activeUrl: '',
-  currentResult: null,
-  pageInsights: null,
-  stats: { scanned: 0, blocked: 0, hindi: 0 },
-  settings: { hoverScan: true, overlay: true, hindi: true, strict: false },
-  redirectPreview: null,
-  dashboardMode: false,
-  adsHidden: false
+  tabId: null,
+  url: '',
+  verdict: null,
+  pageStats: null,
+  settings: {
+    hoverScan: true,
+    overlay: true,
+    hindi: true,
+    strict: false
+  }
 };
 
-function getBaseDomain(hostname) {
-  const parts = String(hostname || '').split('.').filter(Boolean);
-  if (parts.length <= 2) return parts.join('.');
-  if (['co', 'org', 'gov', 'net', 'edu'].includes(parts[parts.length - 2])) {
-    return parts.slice(-3).join('.');
-  }
-  return parts.slice(-2).join('.');
+function svgMarkup(path) {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="${path}"/></svg>`;
+}
+
+function iconFor(type) {
+  const icons = {
+    shield: svgMarkup('M12 2 4 5v6c0 5 3.2 9.4 8 11 4.8-1.6 8-6 8-11V5l-8-3Zm-1 12.4-2.6-2.6 1.4-1.4L11 11.6l4.2-4.2 1.4 1.4-5.6 5.6Z'),
+    globe: svgMarkup('M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 9h-2.8a15.3 15.3 0 0 0-1.2-4.1A8.02 8.02 0 0 1 18.9 11Zm-3.3 2h2.8a8.02 8.02 0 0 1-4 4.1c.6-1.2 1-2.6 1.2-4.1ZM12 4.1c.9 1.1 1.7 2.8 2.1 4.9h-4.2c.4-2.1 1.2-3.8 2.1-4.9ZM4.1 13h2.8c.2 1.5.6 2.9 1.2 4.1A8.02 8.02 0 0 1 4.1 13Zm2.8-2H4.1a8.02 8.02 0 0 1 4-4.1c-.6 1.2-1 2.6-1.2 4.1Zm5.1 8.9c-.9-1.1-1.7-2.8-2.1-4.9h4.2c-.4 2.1-1.2 3.8-2.1 4.9Zm1.1-6.9h-4.4a13.7 13.7 0 0 1 0-2h4.4a13.7 13.7 0 0 1 0 2Z'),
+    safe: svgMarkup('M12 2 3 6.5V12c0 5.1 3.5 9.8 9 10 5.5-.2 9-4.9 9-10V6.5L12 2Zm0 5.5c.6 0 1 .4 1 1v4.2c0 .6-.4 1-1 1s-1-.4-1-1V8.5c0-.6.4-1 1-1Zm0 9c-.8 0-1.4-.6-1.4-1.4s.6-1.4 1.4-1.4 1.4.6 1.4 1.4-.6 1.4-1.4 1.4Z'),
+    suspicious: svgMarkup('M1.8 20.5h20.4L12 2.5 1.8 20.5Zm10.2-3.1c-.8 0-1.4-.6-1.4-1.4s.6-1.4 1.4-1.4 1.4.6 1.4 1.4-.6 1.4-1.4 1.4Zm1-3.7h-2l-.2-5.5h2.4l-.2 5.5Z'),
+    danger: svgMarkup('M12 2 3 6.5V12c0 5.1 3.5 9.8 9 10 5.5-.2 9-4.9 9-10V6.5L12 2Zm0 5.5c.6 0 1 .4 1 1v4.2c0 .6-.4 1-1 1s-1-.4-1-1V8.5c0-.6.4-1 1-1Zm0 9c-.8 0-1.4-.6-1.4-1.4s.6-1.4 1.4-1.4 1.4.6 1.4 1.4-.6 1.4-1.4 1.4Z')
+  };
+
+  return icons[type] || icons.safe;
+}
+
+function safeSendMessage(message) {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve(null);
+          return;
+        }
+        resolve(response || null);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+function safeSendTabMessage(tabId, message) {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.sendMessage(tabId, message, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve(null);
+          return;
+        }
+        resolve(response || null);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
 function quickURLScan(urlString) {
-  let score = 0;
-  const flags = [];
   let url;
-
   try {
     url = new URL(urlString);
   } catch {
-    return { score: 90, flags: ['Invalid URL'], verdict: 'DANGEROUS' };
+    return { verdict: 'DANGEROUS', score: 90, flags: ['Invalid URL'], trusted: false };
   }
 
   const hostname = url.hostname.toLowerCase();
-  const baseDomain = getBaseDomain(hostname);
-
+  const baseDomain = hostname.split('.').slice(-2).join('.');
   if (TRUSTED_DOMAINS.has(baseDomain)) {
-    return { score: 0, flags: ['Verified trusted domain'], verdict: 'SAFE', trusted: true };
+    return { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain'], trusted: true };
   }
 
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
-    score += 40;
-    flags.push('Raw IP address');
-  }
-
-  if (hostname.includes('xn--')) {
-    score += 35;
-    flags.push('Punycode domain');
-  }
+  let score = 0;
+  const flags = [];
 
   if (url.protocol === 'http:') {
     score += 20;
@@ -122,505 +136,278 @@ function quickURLScan(urlString) {
     flags.push(`Suspicious keywords: ${found.join(', ')}`);
   }
 
-  const tld = '.' + hostname.split('.').pop();
-  const badTLDs = ['.xyz', '.tk', '.ml', '.ga', '.cf', '.gq', '.pw', '.top', '.click'];
-  if (badTLDs.includes(tld)) {
+  if (hostname.endsWith('.xyz') || hostname.endsWith('.tk') || hostname.endsWith('.click')) {
     score += 25;
-    flags.push(`Suspicious TLD: ${tld}`);
+    flags.push('Suspicious TLD');
   }
 
   const verdict = score >= 60 ? 'DANGEROUS' : score >= 30 ? 'SUSPICIOUS' : 'SAFE';
-  return { score: Math.min(score, 100), flags, verdict };
+  return { verdict, score: Math.min(score, 100), flags, trusted: false };
 }
 
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function isRenderableUrl(urlString) {
+  return /^https?:\/\//i.test(String(urlString || ''));
 }
 
-function normalizeFlag(flag) {
-  if (typeof flag === 'string') return flag;
-  if (flag && typeof flag === 'object' && 'text' in flag) return flag.text;
-  return String(flag || '');
+function neutralResult() {
+  return { verdict: 'UNKNOWN', score: 0, flags: [] };
 }
 
-function sendMessage(message, tabId) {
-  return new Promise((resolve) => {
-    const callback = (response) => {
-      if (chrome.runtime.lastError) {
-        resolve(null);
-        return;
-      }
-      resolve(response || null);
-    };
-
-    if (tabId) {
-      chrome.tabs.sendMessage(tabId, message, callback);
-    } else {
-      chrome.runtime.sendMessage(message, callback);
-    }
-  });
+function formatVerdictTitle(verdict) {
+  if (verdict === 'DANGEROUS') return 'Dangerous · Blocked';
+  if (verdict === 'SUSPICIOUS') return 'Suspicious · Needs Review';
+  if (verdict === 'SAFE') return 'Safe · Verified Domain';
+  return 'Unknown · No Data';
 }
 
-function setViewMode() {
-  const params = new URLSearchParams(location.search);
-  state.dashboardMode = params.get('view') === 'dashboard';
-  document.body.dataset.view = state.dashboardMode ? 'dashboard' : 'popup';
+function formatVerdictSubtitle(verdict, score, flags) {
+  const count = Array.isArray(flags) ? flags.length : 0;
+  if (verdict === 'SAFE') return `Score ${score}/100 · No threats found`;
+  if (verdict === 'SUSPICIOUS') return `Score ${score}/100 · ${count ? `${count} risk signals` : 'Potential risk signals'}`;
+  if (verdict === 'DANGEROUS') return `Score ${score}/100 · ${count ? `${count} threats found` : 'Threats detected'}`;
+  return `Score ${score}/100 · Waiting for scan`;
 }
 
-function setLoadingState(isLoading) {
-  dom.currentPageLoading.hidden = !isLoading;
-  dom.currentPageContent.hidden = isLoading;
+function formatCache(cacheRemainingMs) {
+  const remaining = Number(cacheRemainingMs || 0);
+  if (remaining <= 0) return 'Expired';
+  return `${Math.max(1, Math.ceil(remaining / 60000))}m left`;
 }
 
-function animateNumber(el, target) {
-  const start = Number(el.textContent || 0) || 0;
-  const end = Number(target || 0);
-  const duration = 320;
-  const startedAt = performance.now();
-
-  const tick = (now) => {
-    const progress = Math.min(1, (now - startedAt) / duration);
-    el.textContent = String(Math.round(start + ((end - start) * progress)));
-    if (progress < 1) requestAnimationFrame(tick);
-  };
-
-  requestAnimationFrame(tick);
+function setIcon(el, type) {
+  if (!el) return;
+  el.innerHTML = iconFor(type);
 }
 
-function updateSessionStats(stats) {
-  state.stats = {
-    scanned: Number(stats.totalScanned || stats.scanned || 0),
-    blocked: Number(stats.blockedClicks || stats.blocked || 0),
-    hindi: Number(stats.hindi || 0)
-  };
-
-  animateNumber(dom.statScanned, state.stats.scanned);
-  animateNumber(dom.statBlocked, state.stats.blocked);
-  animateNumber(dom.statHindi, state.stats.hindi);
+function setLiveState(isLive) {
+  dom.liveDot.classList.toggle('pg-live', !!isLive);
+  dom.liveLabel.textContent = isLive ? 'Live' : 'Offline';
 }
 
-function verdictClass(verdict) {
-  return (VERDICT_CONFIG[verdict] || VERDICT_CONFIG.SAFE).cssClass;
+function truncateUrl(url) {
+  const text = String(url || '');
+  if (text.length <= 44) return text;
+  return `${text.slice(0, 20)}…${text.slice(-20)}`;
 }
 
-function setExtensionStatus(label, offline) {
-  dom.extensionStatusText.textContent = label;
-  dom.extensionStatusDot.className = `pg-status-dot ${offline ? 'pg-status-dot-offline' : 'pg-status-dot-active'}`;
-}
+function renderStats(stats) {
+  const safeStats = stats || {};
+  const linkCount = Number(safeStats.links || 0);
+  const adCount = Number(safeStats.ads || 0);
+  const suspiciousCount = Number(safeStats.suspicious || 0);
+  const externalCount = Number(safeStats.externalLinks ?? linkCount);
 
-function renderReasons(target, flags) {
-  target.innerHTML = '';
-  const items = (flags || []).slice(0, 6).map(normalizeFlag);
+  dom.statLinks.textContent = String(linkCount);
+  dom.statAds.textContent = String(adCount);
+  dom.statSuspicious.textContent = String(suspiciousCount);
 
-  if (!items.length) {
-    const empty = document.createElement('div');
-    empty.className = 'pg-reason-item pg-reason-safe';
-    empty.textContent = 'No suspicious patterns detected';
-    target.appendChild(empty);
-    return;
-  }
+  dom.protocolValue.textContent = safeStats.protocol === 'http:' ? 'HTTP' : safeStats.protocol === 'https:' ? 'HTTPS' : 'Unknown';
+  dom.protocolValue.className = `pg-detail-value${safeStats.protocol === 'http:' ? ' pg-danger' : ''}`;
 
-  items.forEach((flag) => {
-    const item = document.createElement('div');
-    item.className = 'pg-reason-item';
-    item.textContent = flag;
-    target.appendChild(item);
-  });
-}
-
-function showCurrentPage(result) {
-  state.currentResult = result;
-  setLoadingState(false);
-
-  const config = VERDICT_CONFIG[result.verdict] || VERDICT_CONFIG.SAFE;
-  const currentClass = verdictClass(result.verdict);
-  dom.currentPageCard.className = `pg-card pg-current-card pg-${currentClass}`;
-  dom.currentPageVerdictBanner.className = `pg-verdict-banner pg-${currentClass}`;
-  dom.currentPageVerdictIcon.textContent = config.icon;
-  dom.currentPageVerdictLabel.textContent = config.label;
-
-  const score = Math.max(0, Math.min(100, Number(result.urlScore || result.score || 0)));
-  dom.currentPageVerdictScore.textContent = `${score}/100`;
-
-  let domain = '';
-  try {
-    domain = new URL(result.url || '').hostname;
-  } catch {
-    domain = result.url || '';
-  }
-
-  dom.currentPageDomain.textContent = domain;
-  renderReasons(dom.currentPageReasons, result.flags || []);
-  dom.currentBlockBtn.hidden = result.verdict !== 'DANGEROUS';
-  dom.offlinePill.hidden = !result.offlineMode;
-  dom.offlinePill.textContent = result.offlineMode ? 'Offline mode' : 'Online scan';
-
-  if (result.verdict === 'DANGEROUS') {
-    dom.currentPageCard.classList.add('pg-card-pulse');
+  if (safeStats.tlsValid === true) {
+    dom.tlsValue.textContent = 'Valid';
+    dom.tlsValue.className = 'pg-detail-value';
+  } else if (safeStats.tlsValid === false) {
+    dom.tlsValue.textContent = 'Invalid';
+    dom.tlsValue.className = 'pg-detail-value pg-danger';
   } else {
-    dom.currentPageCard.classList.remove('pg-card-pulse');
+    dom.tlsValue.textContent = 'Unknown';
+    dom.tlsValue.className = 'pg-detail-value';
   }
+
+  dom.externalLinksValue.textContent = String(externalCount);
+
+  dom.adsValue.textContent = adCount > 0 ? `${adCount} found` : '0 found';
+  dom.adsValue.className = `pg-detail-value${adCount > 0 ? ' pg-amber' : ''}`;
+
+  const forms = Number(safeStats.hasSensitiveForms || 0);
+  dom.formsValue.textContent = forms > 0 ? `${forms} found` : 'None';
+  dom.formsValue.className = `pg-detail-value${forms > 0 ? ' pg-danger' : ''}`;
+
+  dom.cacheValue.textContent = formatCache(safeStats.cacheRemainingMs);
+  dom.cacheValue.className = `pg-detail-value${Number(safeStats.cacheRemainingMs || 0) <= 0 ? '' : ' pg-amber'}`;
 }
 
-function renderLinksList(links) {
-  const items = Array.isArray(links) ? links : [];
-  dom.pageLinksList.innerHTML = '';
+function renderVerdict(result, url) {
+  const verdict = result && result.verdict ? result.verdict : 'SAFE';
+  const score = Math.max(0, Math.min(100, Number((result && (result.score ?? result.urlScore)) || 0)));
+  const flags = result && Array.isArray(result.flags) ? result.flags : [];
+  const titleClass = verdict === 'DANGEROUS' ? 'dangerous' : verdict === 'SUSPICIOUS' ? 'suspicious' : 'safe';
 
-  if (!items.length) {
-    dom.pageLinksList.innerHTML = '<div class="pg-empty-state">No links found on this page.</div>';
-    return;
-  }
+  dom.verdictCard.className = `pg-verdict-card pg-${titleClass}`;
+  dom.verdictIcon.innerHTML = iconFor(verdict === 'DANGEROUS' ? 'danger' : verdict === 'SUSPICIOUS' ? 'suspicious' : 'safe');
+  dom.verdictTitle.textContent = formatVerdictTitle(verdict);
+  dom.verdictSubtitle.textContent = formatVerdictSubtitle(verdict, score, flags);
+  dom.verdictScore.textContent = `${score}/100`;
+  dom.currentUrl.textContent = truncateUrl(url || state.url || '');
+  setLiveState(true);
+}
 
-  const fragment = document.createDocumentFragment();
-
-  items.forEach((link) => {
-    const row = document.createElement('div');
-    row.className = `pg-link-row pg-link-${(link.verdict || 'SAFE').toLowerCase()}`;
-
-    const icon = document.createElement('span');
-    icon.className = 'pg-link-icon';
-    icon.textContent = link.isRedirect ? '🔗' : link.isAd ? '📢' : (link.verdict === 'DANGEROUS' ? '🔴' : link.verdict === 'SUSPICIOUS' ? '⚠️' : '✅');
-
-    const body = document.createElement('div');
-    body.className = 'pg-link-body';
-
-    const domain = document.createElement('div');
-    domain.className = 'pg-link-domain';
-    domain.textContent = link.domain || link.url || '';
-
-    const text = document.createElement('div');
-    text.className = 'pg-link-text';
-    text.textContent = link.text || link.url || '';
-
-    body.appendChild(domain);
-    body.appendChild(text);
-
-    const badges = document.createElement('div');
-    badges.className = 'pg-link-badges';
-
-    if (link.isAd) {
-      const adBadge = document.createElement('span');
-      adBadge.className = 'pg-mini-badge pg-mini-badge-ad';
-      adBadge.title = 'This is an advertisement link';
-      adBadge.textContent = '📢 AD';
-      badges.appendChild(adBadge);
-    }
-
-    if (link.isRedirect) {
-      const redirectBadge = document.createElement('button');
-      redirectBadge.type = 'button';
-      redirectBadge.className = `pg-mini-badge pg-mini-badge-redirect${link.finalUrl && link.verdict === 'DANGEROUS' ? ' pg-mini-badge-danger' : ''}`;
-      redirectBadge.textContent = link.finalUrl && link.verdict === 'DANGEROUS' ? '🔴' : '[Redirect →]';
-      redirectBadge.title = 'Open safe preview of the final destination';
-      redirectBadge.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        showRedirectPreview(link, redirectBadge).catch(() => {});
-      });
-      badges.appendChild(redirectBadge);
-    }
-
-    row.appendChild(icon);
-    row.appendChild(body);
-    row.appendChild(badges);
-    fragment.appendChild(row);
+function applyFallback(url) {
+  const result = isRenderableUrl(url) ? quickURLScan(url || '') : neutralResult();
+  renderVerdict(result, url);
+  renderStats({
+    links: 0,
+    ads: 0,
+    suspicious: result.verdict === 'SAFE' ? 0 : 1,
+    externalLinks: 0,
+    protocol: (() => {
+      try { return new URL(url).protocol; } catch { return 'unknown'; }
+    })(),
+    hasSensitiveForms: 0,
+    cacheRemainingMs: 0,
+    tlsValid: null
   });
-
-  dom.pageLinksList.appendChild(fragment);
-}
-
-function renderAds(adCounts) {
-  dom.adScriptsCount.textContent = String(adCounts?.scripts || 0);
-  dom.adPixelsCount.textContent = String(adCounts?.trackingPixels || 0);
-  dom.adRedirectCount.textContent = String(adCounts?.redirectLinks || 0);
-}
-
-function showRedirectPreviewCard(redirect, originalLink) {
-  state.redirectPreview = redirect;
-  dom.redirectPreviewCard.hidden = false;
-  dom.redirectOriginal.textContent = redirect.original || originalLink.url;
-  dom.redirectFinal.textContent = redirect.finalUrl || redirect.final_url || 'Could not resolve';
-
-  const verdict = redirect.verdict || 'SUSPICIOUS';
-  const config = VERDICT_CONFIG[verdict] || VERDICT_CONFIG.SUSPICIOUS;
-  dom.redirectVerdict.className = `pg-redirect-verdict pg-${verdictClass(verdict)}`;
-  dom.redirectVerdict.textContent = `${config.icon} ${config.label}${redirect.finalUrl || redirect.final_url ? ' destination detected' : ' destination could not be resolved'}`;
-
-  dom.redirectPreviewOpen.onclick = () => {
-    const finalUrl = redirect.finalUrl || redirect.final_url;
-    if (finalUrl && finalUrl !== 'Could not resolve') {
-      window.open(finalUrl, '_blank', 'noopener,noreferrer');
-    }
-  };
-}
-
-async function showRedirectPreview(linkInfo, badge) {
-  const response = await sendMessage({ type: 'RESOLVE_REDIRECT', url: linkInfo.url }, state.activeTabId);
-  const redirect = response && response.result ? response.result : {
-    original: linkInfo.url,
-    final_url: linkInfo.finalUrl || 'Could not resolve',
-    verdict: linkInfo.verdict || 'SUSPICIOUS'
-  };
-
-  if (badge && redirect.verdict === 'DANGEROUS') {
-    badge.textContent = '🔴';
-    badge.classList.add('pg-mini-badge-danger');
-  }
-
-  showRedirectPreviewCard({
-    ...redirect,
-    finalUrl: redirect.finalUrl || redirect.final_url || linkInfo.finalUrl || ''
-  }, linkInfo);
-}
-
-function hideRedirectPreview() {
-  dom.redirectPreviewCard.hidden = true;
-  state.redirectPreview = null;
-}
-
-function buildReportSummary() {
-  const result = state.currentResult || { verdict: 'SAFE', flags: [], url: state.activeUrl, urlScore: 0, pageScore: 0 };
-  const insights = state.pageInsights || { links: [], adCounts: {} };
-  const flags = (result.flags || []).slice(0, 5).map(normalizeFlag).join(' | ') || 'No major threats found';
-
-  return [
-    `GuardianAI Report`,
-    `Page: ${state.activeUrl || 'unknown'}`,
-    `Verdict: ${result.verdict || 'SAFE'}`,
-    `URL risk: ${result.urlScore || result.score || 0}/100`,
-    `Page risk: ${result.pageScore || 0}/100`,
-    `Flags: ${flags}`,
-    `Links scanned: ${insights.links ? insights.links.length : 0}`,
-    `Ads scripts: ${insights.adCounts?.scripts || 0}`,
-    `Tracking pixels: ${insights.adCounts?.trackingPixels || 0}`,
-    `Redirect links: ${insights.adCounts?.redirectLinks || 0}`,
-    `Session scanned: ${state.stats.scanned}`,
-    `Session blocked: ${state.stats.blocked}`,
-    `Hindi detections: ${state.stats.hindi}`
-  ].join('\n');
-}
-
-function copyText(text) {
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    return navigator.clipboard.writeText(text);
-  }
-
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand('copy');
-  textarea.remove();
-  return Promise.resolve();
-}
-
-async function copyReport() {
-  await copyText(buildReportSummary());
-  dom.copyReportBtn.textContent = 'Copied!';
-  setTimeout(() => { dom.copyReportBtn.textContent = '📋 Copy Report'; }, 1500);
-}
-
-async function reportCurrentPage() {
-  if (!state.activeUrl) return;
-  await sendMessage({ type: 'REPORT_FALSE_POSITIVE', url: state.activeUrl }, state.activeTabId);
-  dom.reportPageBtn.textContent = 'Reported!';
-  setTimeout(() => { dom.reportPageBtn.textContent = '🚨 Report Page'; }, 1500);
-}
-
-function openDashboard() {
-  const url = chrome.runtime.getURL('popup/popup.html?view=dashboard');
-  const opened = window.open(url, '_blank', 'noopener,noreferrer');
-  if (!opened) location.href = url;
-}
-
-function toggleSettings(forceOpen) {
-  const nextVisible = typeof forceOpen === 'boolean' ? forceOpen : dom.settingsPanel.hidden;
-  dom.settingsPanel.hidden = !nextVisible;
-}
-
-function saveSettings() {
-  chrome.storage.local.set({
-    pg_settings: {
-      hoverScan: document.getElementById('toggleHover').checked,
-      overlay: document.getElementById('toggleOverlay').checked,
-      hindi: document.getElementById('toggleHindi').checked,
-      strict: document.getElementById('toggleStrict').checked
-    }
-  });
-}
-
-function loadSettings() {
-  chrome.storage.local.get(['pg_settings'], (result) => {
-    const settings = result.pg_settings || {};
-    if (settings.hoverScan !== undefined) document.getElementById('toggleHover').checked = settings.hoverScan;
-    if (settings.overlay !== undefined) document.getElementById('toggleOverlay').checked = settings.overlay;
-    if (settings.hindi !== undefined) document.getElementById('toggleHindi').checked = settings.hindi;
-    if (settings.strict !== undefined) document.getElementById('toggleStrict').checked = settings.strict;
-    state.settings = {
-      hoverScan: document.getElementById('toggleHover').checked,
-      overlay: document.getElementById('toggleOverlay').checked,
-      hindi: document.getElementById('toggleHindi').checked,
-      strict: document.getElementById('toggleStrict').checked
-    };
-  });
-}
-
-function renderFallbackInsights(tabUrl) {
-  const result = quickURLScan(tabUrl || '');
-  setExtensionStatus('Offline mode', true);
-  dom.offlinePill.hidden = false;
-  dom.offlinePill.textContent = 'Offline mode';
-  state.pageInsights = { links: [], adCounts: { scripts: 0, trackingPixels: 0, redirectLinks: 0 }, offlineMode: true };
-  renderLinksList([]);
-  renderAds({ scripts: 0, trackingPixels: 0, redirectLinks: 0 });
-  showCurrentPage({ ...result, url: tabUrl || '', pageScore: 0, offlineMode: true });
+  setLiveState(false);
 }
 
 async function loadCurrentTab() {
-  setLoadingState(true);
+  try {
+    const tabs = await new Promise((resolve) => {
+      chrome.tabs.query({ active: true, currentWindow: true }, resolve);
+    });
 
-  const tabs = await new Promise((resolve) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, resolve);
-  });
+    if (!tabs || !tabs.length) {
+      state.url = '';
+      setLiveState(false);
+      dom.currentUrl.textContent = 'Waiting for tab...';
+      applyFallback('');
+      return;
+    }
 
-  if (!tabs || !tabs.length) {
-    renderFallbackInsights('');
-    return;
+    const tab = tabs[0];
+    state.tabId = tab.id;
+    state.url = tab.url || '';
+
+    const [verdictResponse, statsResponse] = await Promise.all([
+      safeSendMessage({ type: 'GET_VERDICT', url: state.url }),
+      safeSendMessage({ type: 'GET_PAGE_STATS', tabId: state.tabId })
+    ]);
+
+    const verdict = verdictResponse && verdictResponse.result
+      ? verdictResponse.result
+      : (isRenderableUrl(state.url) ? quickURLScan(state.url) : neutralResult());
+    state.verdict = verdict;
+    state.pageStats = statsResponse && statsResponse.result ? statsResponse.result : null;
+
+    renderVerdict(verdict, state.url);
+    renderStats(state.pageStats || {
+      links: 0,
+      ads: 0,
+      suspicious: verdict.verdict === 'SAFE' ? 0 : 1,
+      externalLinks: 0,
+      protocol: (() => {
+        try { return new URL(state.url).protocol; } catch { return 'https:'; }
+      })(),
+      hasSensitiveForms: 0,
+      cacheRemainingMs: 0,
+      tlsValid: state.url.startsWith('https:')
+    });
+  } catch {
+    setLiveState(false);
+    applyFallback(state.url);
   }
+}
 
-  const tab = tabs[0];
-  state.activeTabId = tab.id;
-  state.activeUrl = tab.url || '';
+async function triggerRescan() {
+  if (!state.tabId) return;
+  dom.rescanBtn.disabled = true;
+  dom.rescanBtn.textContent = 'Scanning...';
+  await safeSendTabMessage(state.tabId, { type: 'REQUEST_PAGE_DATA' });
+  setTimeout(() => {
+    dom.rescanBtn.disabled = false;
+    dom.rescanBtn.textContent = '↻ Rescan';
+    loadCurrentTab().catch(() => {});
+  }, 250);
+}
 
-  const [verdictResponse, insightsResponse] = await Promise.all([
-    sendMessage({ type: 'GET_CURRENT_VERDICT' }),
-    sendMessage({ type: 'GET_PAGE_INSIGHTS' }, tab.id)
-  ]);
+function toggleSettings(forceOpen) {
+  const next = typeof forceOpen === 'boolean' ? forceOpen : dom.settingsPanel.hidden;
+  dom.settingsPanel.hidden = !next;
+}
 
-  const verdictResult = verdictResponse && verdictResponse.result ? verdictResponse.result : quickURLScan(state.activeUrl);
-  const pageInsights = insightsResponse || {
-    links: [],
-    adCounts: { scripts: 0, trackingPixels: 0, redirectLinks: 0 },
-    offlineMode: true
+function loadSettings() {
+  try {
+    chrome.storage.local.get(['pg_settings'], (result) => {
+      const settings = result && result.pg_settings ? result.pg_settings : {};
+      dom.toggleHover.checked = settings.hoverScan !== undefined ? !!settings.hoverScan : true;
+      dom.toggleOverlay.checked = settings.overlay !== undefined ? !!settings.overlay : true;
+      dom.toggleHindi.checked = settings.hindi !== undefined ? !!settings.hindi : true;
+      dom.toggleStrict.checked = settings.strict !== undefined ? !!settings.strict : false;
+      state.settings = {
+        hoverScan: dom.toggleHover.checked,
+        overlay: dom.toggleOverlay.checked,
+        hindi: dom.toggleHindi.checked,
+        strict: dom.toggleStrict.checked
+      };
+    });
+  } catch {
+    // Ignore storage failures in popup UI.
+  }
+}
+
+function saveSettings() {
+  const settings = {
+    hoverScan: dom.toggleHover.checked,
+    overlay: dom.toggleOverlay.checked,
+    hindi: dom.toggleHindi.checked,
+    strict: dom.toggleStrict.checked
   };
 
-  state.pageInsights = pageInsights;
-  showCurrentPage({ ...verdictResult, url: state.activeUrl, offlineMode: !!pageInsights.offlineMode || !!verdictResult.offlineMode });
-  renderLinksList(pageInsights.links || []);
-  renderAds(pageInsights.adCounts || {});
-  setExtensionStatus(pageInsights.offlineMode || verdictResult.offlineMode ? 'Offline mode' : 'Active', !!(pageInsights.offlineMode || verdictResult.offlineMode));
-
-  if (verdictResponse && verdictResponse.stats) {
-    updateSessionStats(verdictResponse.stats);
+  state.settings = settings;
+  try {
+    chrome.storage.local.set({ pg_settings: settings });
+  } catch {
+    // Ignore storage failures in popup UI.
   }
-
-  setLoadingState(false);
 }
 
-async function refreshPageInsights() {
-  if (!state.activeTabId) return;
-  const response = await sendMessage({ type: 'GET_PAGE_INSIGHTS' }, state.activeTabId);
-  if (!response) return;
-  state.pageInsights = response;
-  renderLinksList(response.links || []);
-  renderAds(response.adCounts || {});
+async function reportFalsePositive() {
+  if (!state.url) return;
+  await safeSendMessage({ type: 'REPORT_FALSE_POSITIVE', url: state.url });
+  dom.reportBtn.textContent = 'Reported';
+  setTimeout(() => {
+    dom.reportBtn.textContent = '⚑ Report FP';
+  }, 1200);
 }
 
-async function scanAllLinks() {
-  if (!state.activeTabId) return;
-  dom.scanAllBtn.textContent = 'Scanning...';
-  await sendMessage({ type: 'SCAN_ALL_LINKS' }, state.activeTabId);
-  await refreshPageInsights();
-  dom.scanAllBtn.textContent = 'Scan All';
-}
-
-function hookEvents() {
-  dom.scanBtn.addEventListener('click', () => {
-    const raw = dom.urlInput.value.trim();
-    if (!raw) return;
-
-    dom.inlineResult.textContent = '🔄 Scanning...';
-    dom.inlineResult.className = 'pg-inline-result';
-
-    const fullURL = raw.startsWith('http') ? raw : `https://${raw}`;
-    const result = quickURLScan(fullURL);
-    const config = VERDICT_CONFIG[result.verdict] || VERDICT_CONFIG.SAFE;
-
-    dom.inlineResult.textContent = `${config.icon} ${config.label}: ${result.flags[0] || 'No major threats found'}`;
-    dom.inlineResult.className = `pg-inline-result pg-inline-${result.verdict.toLowerCase()}`;
-  });
-
-  dom.urlInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') dom.scanBtn.click();
+function bindEvents() {
+  dom.rescanBtn.addEventListener('click', () => {
+    triggerRescan().catch(() => {});
   });
 
   dom.settingsBtn.addEventListener('click', () => toggleSettings(true));
-  dom.settingsActionBtn.addEventListener('click', () => toggleSettings(true));
   dom.settingsClose.addEventListener('click', () => toggleSettings(false));
-  dom.settingsDone.addEventListener('click', () => {
+  dom.settingsSave.addEventListener('click', () => {
     saveSettings();
     toggleSettings(false);
   });
 
-  ['toggleHover', 'toggleOverlay', 'toggleHindi', 'toggleStrict'].forEach((id) => {
-    document.getElementById(id).addEventListener('change', saveSettings);
+  [dom.toggleHover, dom.toggleOverlay, dom.toggleHindi, dom.toggleStrict].forEach((input) => {
+    input.addEventListener('change', saveSettings);
   });
 
-  dom.currentBlockBtn.addEventListener('click', () => {
-    if (!state.currentResult || !state.activeTabId) return;
-    sendMessage({ type: 'SHOW_WARNING', result: state.currentResult }, state.activeTabId);
+  dom.reportBtn.addEventListener('click', () => {
+    reportFalsePositive().catch(() => {});
   });
-
-  dom.scanAllBtn.addEventListener('click', () => scanAllLinks().catch(() => {}));
-  dom.redirectPreviewClose.addEventListener('click', hideRedirectPreview);
-  dom.redirectPreviewOpen.addEventListener('click', () => {
-    const finalUrl = state.redirectPreview && (state.redirectPreview.finalUrl || state.redirectPreview.final_url);
-    if (finalUrl && finalUrl !== 'Could not resolve') {
-      window.open(finalUrl, '_blank', 'noopener,noreferrer');
-    }
-  });
-
-  dom.adsHideBtn.addEventListener('click', () => {
-    state.adsHidden = !state.adsHidden;
-    dom.adsSection.querySelector('.pg-ads-grid').hidden = state.adsHidden;
-    dom.blockAdsBtn.hidden = state.adsHidden;
-    dom.adsHideBtn.textContent = state.adsHidden ? '[Show]' : '[Hide]';
-  });
-
-  dom.blockAdsBtn.addEventListener('click', () => {
-    dom.blockAdsBtn.textContent = 'Ads labeled';
-    setTimeout(() => { dom.blockAdsBtn.textContent = 'Block All Ads on Page'; }, 1200);
-    refreshPageInsights().catch(() => {});
-  });
-
-  dom.reportPageBtn.addEventListener('click', () => reportCurrentPage().catch(() => {}));
-  dom.copyReportBtn.addEventListener('click', () => copyReport().catch(() => {}));
-  dom.dashboardBtn.addEventListener('click', openDashboard);
 }
 
-async function loadStats() {
-  const response = await sendMessage({ type: 'GET_STATS' });
-  if (response && response.stats) {
-    updateSessionStats(response.stats);
-    return;
-  }
-
-  chrome.storage.session.get(['phishguard_stats'], (result) => {
-    if (result && result.phishguard_stats) {
-      updateSessionStats(result.phishguard_stats);
-    }
-  });
+function decorateIcons() {
+  setIcon(dom.headerShield, 'shield');
+  setIcon(dom.urlGlobe, 'globe');
+  setIcon(dom.verdictIcon, 'safe');
+  setIcon(dom.protocolIcon, 'safe');
+  setIcon(dom.tlsIcon, 'safe');
+  setIcon(dom.linksIcon, 'globe');
+  setIcon(dom.adsIcon, 'suspicious');
+  setIcon(dom.formsIcon, 'danger');
+  setIcon(dom.cacheIcon, 'safe');
 }
 
 async function bootstrap() {
-  setViewMode();
+  decorateIcons();
   loadSettings();
-  hookEvents();
-  await loadStats();
+  bindEvents();
   await loadCurrentTab();
 }
 
