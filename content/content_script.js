@@ -162,49 +162,53 @@
   };
 
   // Returns array of { name, url, free, note } for a given domain
-  function getSafeAlternatives(domain) {
+  // flags: optional array of warning flag strings to help categorize
+  function getSafeAlternatives(domain, flags) {
     const h = String(domain || '').toLowerCase();
+    const flagText = (flags || []).join(' ').toLowerCase();
+    const combined = h + ' ' + flagText;
 
-    if (/repack|crack|fitgirl|dodi|skidrow|igg.game|ocean.game|steamunlock|pirat.*game|game.*pirat/i.test(h))
+    // Game cracks / piracy / illegal downloads — check FIRST
+    if (/repack|crack|fitgirl|dodi|skidrow|igg.?game|ocean.{0,5}game|steamunlock|pirat.*game|game.*pirat|game.*download|download.*game|free.*game.*pc|pc.*game.*free/i.test(combined))
       return SAFE_ALTERNATIVES.gaming.slice(0, 4);
-    if (/torrent|rarbg|piratebay|kickass|1337x|nyaa|magnet/i.test(h))
+    if (/torrent|rarbg|piratebay|kickass|1337x|nyaa|magnet/i.test(combined))
       return [...SAFE_ALTERNATIVES.torrent, ...SAFE_ALTERNATIVES.gaming.slice(0, 2)];
-    if (/movie|film|watch|series|stream|flix|rockers|rulz|yogi|isai|kutta|moviesda|fmovie|gomovie|soap2|putlock|tamilrock|bolly|tolly|hdmovie/i.test(h))
+    if (/movie|film|watch|series|stream|flix|rockers|rulz|yogi|isai|kutta|moviesda|fmovie|gomovie|soap2|putlock|tamilrock|bolly|tolly|hdmovie/i.test(combined))
       return SAFE_ALTERNATIVES.streaming.slice(0, 5);
-    if (/mp3|song|music|pagalworld|djpunjab|ringtone|audio.*download/i.test(h))
+    if (/mp3|song|music|pagalworld|djpunjab|ringtone|audio.*download/i.test(combined))
       return SAFE_ALTERNATIVES.music.slice(0, 4);
-    if (/bank|kyc|netbank|onlinebank|sbi|hdfc|icici|axis|kotak|yesbank|pnb/i.test(h))
+    if (/bank|kyc|netbank|onlinebank|sbi|hdfc|icici|axis|kotak|yesbank|pnb/i.test(combined))
       return SAFE_ALTERNATIVES.banking.slice(0, 4);
-    if (/pay|wallet|upi|transfer|money|paytm|phonepe|gpay|bhim/i.test(h))
+    if (/pay|wallet|upi|transfer|money|paytm|phonepe|gpay|bhim/i.test(combined))
       return SAFE_ALTERNATIVES.payment;
-    if (/shop|store|buy|cart|deal|offer|discount|sale|price|cheap/i.test(h))
+    if (/shop|store|buy|cart|deal|offer|discount|sale|price|cheap/i.test(combined))
       return SAFE_ALTERNATIVES.shopping.slice(0, 4);
-    if (/insta|facebook|twitter|whatsapp|telegram|social|tiktok/i.test(h))
+    if (/insta|facebook|twitter|whatsapp|telegram|social|tiktok/i.test(combined))
       return SAFE_ALTERNATIVES.social.slice(0, 4);
-    if (/gmail|yahoo.*mail|outlook|webmail|mail.*login/i.test(h))
+    if (/gmail|yahoo.*mail|outlook|webmail|mail.*login/i.test(combined))
       return SAFE_ALTERNATIVES.email;
-    if (/gov|irctc|aadhaar|aadhar|uidai|income.?tax|epfo|passport|digilock/i.test(h))
+    if (/gov|irctc|aadhaar|aadhar|uidai|income.?tax|epfo|passport|digilock/i.test(combined))
       return SAFE_ALTERNATIVES.government.slice(0, 4);
-    if (/job|career|recruit|hire|vacancy|internship|fresher/i.test(h))
+    if (/job|career|recruit|hire|vacancy|internship|fresher/i.test(combined))
       return SAFE_ALTERNATIVES.jobs.slice(0, 4);
-    if (/loan|credit|emi|finance|borrow|lend|interest/i.test(h))
+    if (/loan|credit|emi|finance|borrow|lend|interest/i.test(combined))
       return SAFE_ALTERNATIVES.loans;
-    if (/crypto|bitcoin|invest|trading|forex|nft|coin|token|profit|earn.*money/i.test(h))
+    if (/crypto|bitcoin|invest|trading|forex|nft|coin|token|profit|earn.*money/i.test(combined))
       return SAFE_ALTERNATIVES.crypto.slice(0, 4);
-    if (/course|certif|learn|study|exam|degree|college|university/i.test(h))
+    if (/course|certif|learn|study|exam|degree|college|university/i.test(combined))
       return SAFE_ALTERNATIVES.education.slice(0, 4);
-    if (/vpn|proxy|tunnel|privacy|anonymous/i.test(h))
+    if (/vpn|proxy|tunnel|privacy|anonymous/i.test(combined))
       return SAFE_ALTERNATIVES.vpn;
-    if (/download|software|apk|setup|install|crack.*app|app.*crack/i.test(h))
+    if (/download|software|apk|setup|install/i.test(combined))
       return SAFE_ALTERNATIVES.software.slice(0, 4);
-    if (/news|breaking|headline|viral|latest.*news/i.test(h))
+    if (/news|breaking|headline|viral|latest.*news/i.test(combined))
       return SAFE_ALTERNATIVES.news.slice(0, 3);
-    if (/dating|meet|single|match|romance|love.*online/i.test(h))
+    if (/dating|meet|single|match|romance|love.*online/i.test(combined))
       return SAFE_ALTERNATIVES.dating;
-    if (/login|signin|account|secure|verify|update|otp|pin|password/i.test(h))
+    if (/login|signin|account|secure|verify|update|otp|pin|password/i.test(combined))
       return [...SAFE_ALTERNATIVES.banking.slice(0, 2), ...SAFE_ALTERNATIVES.payment.slice(0, 2)];
-    // Default — free streaming
-    return SAFE_ALTERNATIVES.streaming.filter(s => s.free).slice(0, 3);
+    // Default — gaming (most common piracy use case after streaming)
+    return SAFE_ALTERNATIVES.gaming.filter(s => s.free).slice(0, 3);
   }
 
   const hoverCache = new Map();
@@ -1792,7 +1796,7 @@
     const domain = (() => { try { return new URL(result.url).hostname; } catch { return result.url; } })();
     const flags = (result.flags || []).slice(0, 5).map((flag) => typeof flag === 'object' ? flag.text : flag);
     const score = Math.max(0, Math.min(100, Number(result.score || result.urlScore || 0)));
-    const alternatives = getSafeAlternatives(domain);
+    const alternatives = getSafeAlternatives(domain, flags);
 
     // Use the shared toSafetyScore — same formula as popup.js and hover popup
     const safetyScore = toSafetyScore(score, verdict, result.url || '');
