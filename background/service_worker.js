@@ -10,7 +10,7 @@ importScripts('../utils/threat_intel.js');
 const verdictCache = new Map();
 const pageStatsByTab = new Map();
 const serpStatsByTab = new Map();
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const CACHE_TTL = 3 * 60 * 1000; // 3 minutes (reduced from 10 to pick up blocklist updates faster)
 const MAX_CACHE_ENTRIES = 200;
 
 // ── Extension icon states ─────────────────────────────────────

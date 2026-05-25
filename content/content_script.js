@@ -8,7 +8,7 @@
 
   const HOVER_DELAY_MS = 600;
   const CACHE_LIMIT = 200;
-  const CACHE_TTL = 10 * 60 * 1000;
+  const CACHE_TTL = 3 * 60 * 1000; // 3 minutes
   const GOOGLE_SERP_RE = /^https:\/\/(www\.)?google\.(com|co\.in)\/search/;
 
   const TRUSTED_DOMAINS = new Set([
@@ -747,6 +747,9 @@
     'bollyflix.com':    { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy/illegal streaming site'] },
     'kuttymovies.com':  { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy site — Tamil movies'] },
     'fmovies.to':       { verdict: 'DANGEROUS', score: 100, flags: ['Known illegal streaming site', 'Adware/malware risk'] },
+    'pagalworld.is':    { verdict: 'DANGEROUS', score: 100, flags: ['Known music piracy site — illegal MP3 downloads'] },
+    'pagalworld.com':   { verdict: 'DANGEROUS', score: 100, flags: ['Known music piracy site — illegal MP3 downloads'] },
+    'pagalnew.com':     { verdict: 'DANGEROUS', score: 100, flags: ['Known music piracy site — illegal MP3 downloads', 'Distributes copyrighted songs without license'] },
     'fitgirl-repacks.site': { verdict: 'SUSPICIOUS', score: 40, flags: ['Suspicious TLD (.site)', 'Distributes pirated game repacks', 'Unofficial software distribution'] }
   };
 
