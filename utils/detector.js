@@ -74,6 +74,10 @@ const PhishGuardDetector = (() => {
     'hdeuropix.com', 'streamlord.com',
     'vexmovies.org', 'cmovies.net',
     'solarmovie.pe', 'bflix.gg', 'iosmirror.cc',
+    // Piracy repack / cracked game sites
+    'fitgirl-repacks.site', 'fitgirl-repacks.ru',
+    'dodi-repacks.site', 'igg-games.com', 'ocean-of-games.com',
+    'steamunlocked.net', 'skidrowreloaded.com', 'crackwatch.com',
     // Known phishing / scam domains
     'paytm-kyc.com', 'paytm-verify.com',
     'sbi-netbanking.xyz', 'sbi-online.xyz',
@@ -134,7 +138,9 @@ const PhishGuardDetector = (() => {
     'piratebay', 'kickasstorrent', 'rarbg',
     // Generic piracy patterns
     'freemovie', 'hdmovie', 'fullmovie', 'moviedownload',
-    'torrentmovie', 'piracymovie'
+    'torrentmovie', 'piracymovie',
+    // Cracked/repack game sites
+    'fitgirl', 'dodirepacks', 'skidrow', 'crackwatch', 'steamunlock'
   ];
 
   // ── English phishing keywords ─────────────────────────────────

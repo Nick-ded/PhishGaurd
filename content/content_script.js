@@ -631,12 +631,12 @@
   function buildBadgeMarkup(result) {
     const verdict = result.verdict || 'SAFE';
     const tier = getVerdictTier(verdict);
-    const score = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const rawScore = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const safetyScore = toSafetyScore(rawScore, verdict, result.url || '');
     const label = getVerdictBadgeText(verdict);
-    // For safe: just show ✓, no score. For warn/danger: show label + score
     const inner = verdict === 'SAFE'
       ? `${getVerdictIconSvg(tier)}<span>${escHtml(label)}</span>`
-      : `${getVerdictIconSvg(tier)}<span>${escHtml(label)}</span><span>·</span><span>${score}</span>`;
+      : `${getVerdictIconSvg(tier)}<span>${escHtml(label)}</span><span>·</span><span>${safetyScore}</span>`;
 
     return `<span class="pg-badge pg-${tier}" aria-hidden="true">${inner}</span>`;
   }
@@ -644,13 +644,14 @@
   function buildTooltipMarkup(result, domain) {
     const verdict = result.verdict || 'SAFE';
     const tier = getVerdictTier(verdict);
-    const score = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const rawScore = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const safetyScore = toSafetyScore(rawScore, verdict, result.url || domain || '');
     const chips = getTooltipChips(result.flags || []);
 
     return `
       <span class="pg-badge-tooltip-line1">
         <span class="pg-badge pg-${tier}">${getVerdictIconSvg(tier)}<span>${escHtml(getVerdictBadgeText(verdict))}</span></span>
-        <span class="pg-badge-tooltip-score">Score ${score}/100</span>
+        <span class="pg-badge-tooltip-score">Safety ${safetyScore}/100</span>
       </span>
       <div class="pg-badge-tooltip-domain">${escHtml(domain || '')}</div>
       <div class="pg-badge-tooltip-chips">
@@ -683,10 +684,11 @@
     badge.className = 'pg-badge';
     badge.classList.add(`pg-${tier}`);
     const safeLabel = getVerdictBadgeText(result.verdict || 'SAFE');
-    const safeScore = Math.max(0, Math.min(100, Number(result.score || 0)));
+    const rawThreat = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const safetyScoreBadge = toSafetyScore(rawThreat, result.verdict || 'SAFE', urlString);
     badge.innerHTML = result.verdict === 'SAFE' || !result.verdict
       ? `${getVerdictIconSvg(tier)}<span>${escHtml(safeLabel)}</span>`
-      : `${getVerdictIconSvg(tier)}<span>${escHtml(safeLabel)}</span><span>·</span><span>${safeScore}</span>`;
+      : `${getVerdictIconSvg(tier)}<span>${escHtml(safeLabel)}</span><span>·</span><span>${safetyScoreBadge}</span>`;
 
     const tooltip = document.createElement('span');
     tooltip.className = 'pg-badge-tooltip';
@@ -738,9 +740,11 @@
     if (badge) {
       badge.className = `pg-badge pg-${tier}`;
       const updatedLabel = getVerdictBadgeText(result.verdict || 'SAFE');
+      const rawThreat2 = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+      const safetyScore2 = toSafetyScore(rawThreat2, result.verdict || 'SAFE', urlString);
       badge.innerHTML = result.verdict === 'SAFE' || !result.verdict
         ? `${getVerdictIconSvg(tier)}<span>${escHtml(updatedLabel)}</span>`
-        : `${getVerdictIconSvg(tier)}<span>${escHtml(updatedLabel)}</span><span>·</span><span>${score}</span>`;
+        : `${getVerdictIconSvg(tier)}<span>${escHtml(updatedLabel)}</span><span>·</span><span>${safetyScore2}</span>`;
     }
 
     if (tooltip) {
@@ -771,12 +775,13 @@
   function getGoogleSerpStatusMarkup(result) {
     const verdict = result.verdict || 'SAFE';
     const tier = getVerdictTier(verdict);
-    const score = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const rawScore = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const safetyScore = toSafetyScore(rawScore, verdict, result.url || '');
     const chips = getTooltipChips(result.flags || []).slice(0, 2);
-    const label = verdict === 'DANGEROUS' ? 'Dangerous' : verdict === 'SUSPICIOUS' ? 'Suspicious' : 'SAFE';
+    const label = verdict === 'DANGEROUS' ? 'Dangerous' : verdict === 'SUSPICIOUS' ? 'Suspicious' : 'Safe';
 
     return `
-      ${getVerdictIconSvg(tier)} ${label} · Score ${score}${chips.length ? ` · ${chips.map((chip) => escHtml(chip)).join(' · ')}` : ''}
+      ${getVerdictIconSvg(tier)} ${label} · Safety ${safetyScore}${chips.length ? ` · ${chips.map((chip) => escHtml(chip)).join(' · ')}` : ''}
     `;
   }
 
@@ -806,7 +811,8 @@
   function createGoogleSerpBadge(result) {
     const verdict = result.verdict || 'SAFE';
     const tier = getVerdictTier(verdict);
-    const score = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const rawScore = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const safetyScore = toSafetyScore(rawScore, verdict, result.url || result.domain || '');
     const chips = getTooltipChips(result.flags || []).slice(0, 3);
     const badgeLabel = getVerdictBadgeText(verdict);
 
@@ -818,7 +824,7 @@
     badge.className = `pg-badge pg-${tier}`;
     badge.innerHTML = verdict === 'SAFE'
       ? `${getVerdictIconSvg(tier)}<span>${escHtml(badgeLabel)}</span>`
-      : `${getVerdictIconSvg(tier)}<span>${escHtml(badgeLabel)}</span><span>·</span><span>${score}</span>`;
+      : `${getVerdictIconSvg(tier)}<span>${escHtml(badgeLabel)}</span><span>·</span><span>${safetyScore}</span>`;
 
     const tooltip = document.createElement('span');
     tooltip.className = 'pg-badge-tooltip';
@@ -827,7 +833,7 @@
     tooltip.innerHTML = `
       <span class="pg-badge-tooltip-line1">
         <span class="pg-badge pg-${tier}">${getVerdictIconSvg(tier)}<span>${escHtml(badgeLabel)}</span></span>
-        <span class="pg-badge-tooltip-score">Score ${score}/100</span>
+        <span class="pg-badge-tooltip-score">Safety ${safetyScore}/100</span>
       </span>
       <div class="pg-badge-tooltip-domain">${escHtml(result.domain || '')}</div>
       <div class="pg-badge-tooltip-chips">
