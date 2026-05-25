@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhishGuard Hover Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+        }
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        .test-section h2 {
+            margin-top: 0;
+            color: #555;
+        }
+        a {
+            display: inline-block;
+            margin: 10px 10px 10px 0;
+            padding: 10px 15px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        a:hover {
+            background: #0056b3;
+        }
+        .safe-link { background: #28a745; }
+        .suspicious-link { background: #ffc107; color: #000; }
+        .dangerous-link { background: #dc3545; }
+    </style>
+</head>
+<body>
+    <h1>PhishGuard Hover Popup Test Page</h1>
+    <p>Hover over the links below to test the PhishGuard hover popup functionality.</p>
+
+    <div class="test-section">
+        <h2>Safe Links (Trusted Domains)</h2>
+        <a href="https://www.google.com" class="safe-link">Google</a>
+        <a href="https://www.youtube.com" class="safe-link">YouTube</a>
+        <a href="https://www.github.com" class="safe-link">GitHub</a>
+        <a href="https://www.wikipedia.org" class="safe-link">Wikipedia</a>
+    </div>
+
+    <div class="test-section">
+        <h2>Suspicious Links (Suspicious Keywords)</h2>
+        <a href="https://secure-login-verify.com" class="suspicious-link">Fake Login Page</a>
+        <a href="https://account-update-required.xyz" class="suspicious-link">Account Update</a>
+        <a href="https://banking-kyc-verify.tk" class="suspicious-link">KYC Verification</a>
+        <a href="https://winner-prize-claim.ml" class="suspicious-link">Prize Winner</a>
+    </div>
+
+    <div class="test-section">
+        <h2>Dangerous Links (Multiple Red Flags)</h2>
+        <a href="http://192.168.1.1/login" class="dangerous-link">IP Address Login</a>
+        <a href="https://secure-banking-login-verify-account-update.xyz" class="dangerous-link">Multiple Suspicious Keywords</a>
+        <a href="https://xn--e1afmkfd.xn--p1ai" class="dangerous-link">Punycode Domain</a>
+        <a href="https://bit.ly/fake-redirect" class="dangerous-link">URL Shortener</a>
+    </div>
+
+    <div class="test-section">
+        <h2>Search Results Simulation</h2>
+        <p>Testing hover on regular text links:</p>
+        <div style="background: white; padding: 15px; border-radius: 5px;">
+            <h3 style="margin-top: 0;">
+                <a href="https://fitgirl-repacks.site">FitGirl Repacks</a>
+            </h3>
+            <p style="color: #666; font-size: 14px;">
+                <cite>https://fitgirl-repacks.site › popular-repacks</cite>
+            </p>
+            <p>Popular Repacks - Download games and software...</p>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Instructions</h2>
+        <ol>
+            <li>Make sure the PhishGuard extension is loaded in your browser</li>
+            <li>Hover over any link above and wait ~600ms</li>
+            <li>A popup should appear showing the safety verdict</li>
+            <li>The popup should show: Icon (✓, ⚠, or ✕), Title (Safe/Suspicious/Dangerous), and details</li>
+        </ol>
+    </div>
+</body>
+</html>

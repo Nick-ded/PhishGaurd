@@ -1048,27 +1048,27 @@
     hoverPopupRefs.card.dataset.verdict = verdict;
 
     const iconMap = {
-      SAFE: '✅',
-      SUSPICIOUS: '⚠️',
-      DANGEROUS: '🔴',
-      LOADING: '🔄'
+      SAFE: '✓',
+      SUSPICIOUS: '⚠',
+      DANGEROUS: '✕',
+      LOADING: '○'
     };
 
     const titleMap = {
-      SAFE: 'Safe - No Threats Found',
-      SUSPICIOUS: 'Suspicious Link',
-      DANGEROUS: 'Dangerous Link',
+      SAFE: 'Safe',
+      SUSPICIOUS: 'Suspicious',
+      DANGEROUS: 'Dangerous',
       LOADING: 'Scanning...'
     };
 
     const subtitleMap = {
-      SAFE: 'Verified Domain',
-      SUSPICIOUS: 'Proceed with Caution',
-      DANGEROUS: 'This website is dangerous',
+      SAFE: 'No threats detected',
+      SUSPICIOUS: 'Proceed with caution',
+      DANGEROUS: 'Do not proceed',
       LOADING: 'Analyzing link'
     };
 
-    hoverPopupRefs.icon.textContent = iconMap[verdict] || '🔄';
+    hoverPopupRefs.icon.textContent = iconMap[verdict] || '○';
     hoverPopupRefs.title.textContent = titleMap[verdict] || 'Scanning...';
     hoverPopupRefs.subtitle.textContent = subtitleMap[verdict] || 'Analyzing link';
   }
