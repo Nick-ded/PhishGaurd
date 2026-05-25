@@ -1253,6 +1253,24 @@
 
     link.dataset.gaHoverAttached = 'true';
 
+    link.addEventListener('pointerenter', (event) => {
+      scheduleHover(link, event);
+    });
+
+    link.addEventListener('focus', (event) => {
+      scheduleHover(link, event);
+    });
+
+    link.addEventListener('pointerleave', () => {
+      clearTimeout(hoverState.timer);
+      hideHoverPopup();
+    });
+
+    link.addEventListener('blur', () => {
+      clearTimeout(hoverState.timer);
+      hideHoverPopup();
+    });
+
     link.addEventListener('click', (event) => {
       const href = getLinkUrl(link);
       if (!href) return;
