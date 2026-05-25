@@ -1055,9 +1055,9 @@
     };
 
     const titleMap = {
-      SAFE: 'SAFE',
-      SUSPICIOUS: 'SUSPICIOUS',
-      DANGEROUS: 'DANGEROUS',
+      SAFE: 'Safe - No Threats Found',
+      SUSPICIOUS: 'Suspicious Link',
+      DANGEROUS: 'Dangerous Link',
       LOADING: 'Scanning...'
     };
 
