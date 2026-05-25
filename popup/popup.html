@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhishGuard</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <div class="pg-app">
+
+    <!-- Header -->
+    <header class="pg-header">
+      <div class="pg-logo">
+        <span class="pg-logo-icon">🛡️</span>
+        <div>
+          <div class="pg-logo-name">PhishGuard</div>
+          <div class="pg-logo-sub">Scam Link Detector</div>
+        </div>
+      </div>
+      <div class="pg-settings-btn" id="settingsBtn" title="Settings">⚙</div>
+    </header>
+
+    <!-- Current Page Verdict -->
+    <div class="pg-verdict-card" id="verdictCard">
+      <div class="pg-verdict-scanning" id="scanningState">
+        <div class="pg-scan-spinner"></div>
+        <div class="pg-scan-text">Scanning page…</div>
+      </div>
+
+      <div class="pg-verdict-result" id="resultState" style="display:none">
+        <div class="pg-verdict-badge" id="verdictBadge">
+          <span class="pg-verdict-icon" id="verdictIcon"></span>
+          <span class="pg-verdict-label" id="verdictLabel"></span>
+        </div>
+        <div class="pg-verdict-domain" id="verdictDomain"></div>
+        <div class="pg-verdict-score" id="verdictScore"></div>
+      </div>
+    </div>
+
+    <!-- Flags / Reasons -->
+    <div class="pg-flags-section" id="flagsSection" style="display:none">
+      <div class="pg-flags-title">Why we flagged it</div>
+      <div class="pg-flags-list" id="flagsList"></div>
+    </div>
+
+    <!-- No Flags State -->
+    <div class="pg-clean-state" id="cleanState" style="display:none">
+      <div class="pg-clean-icon">✓</div>
+      <div class="pg-clean-text">No suspicious patterns detected</div>
+    </div>
+
+    <!-- Scan Input -->
+    <div class="pg-scan-input-section">
+      <div class="pg-scan-input-label">Check any URL</div>
+      <div class="pg-scan-input-row">
+        <input type="url" id="urlInput" class="pg-url-input" placeholder="https://example.com" />
+        <button id="scanBtn" class="pg-scan-btn">Scan</button>
+      </div>
+      <div class="pg-inline-result" id="inlineResult"></div>
+    </div>
+
+    <!-- Stats -->
+    <div class="pg-stats">
+      <div class="pg-stat">
+        <div class="pg-stat-value" id="statScanned">0</div>
+        <div class="pg-stat-label">Scanned</div>
+      </div>
+      <div class="pg-stat pg-stat-safe">
+        <div class="pg-stat-value" id="statSafe">0</div>
+        <div class="pg-stat-label">Safe</div>
+      </div>
+      <div class="pg-stat pg-stat-warn">
+        <div class="pg-stat-value" id="statSuspicious">0</div>
+        <div class="pg-stat-label">Suspicious</div>
+      </div>
+      <div class="pg-stat pg-stat-danger">
+        <div class="pg-stat-value" id="statDangerous">0</div>
+        <div class="pg-stat-label">Dangerous</div>
+      </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div class="pg-settings-panel" id="settingsPanel" style="display:none">
+      <div class="pg-settings-title">Settings</div>
+      <div class="pg-setting-row">
+        <div class="pg-setting-info">
+          <div class="pg-setting-name">Hover link scanning</div>
+          <div class="pg-setting-desc">Show tooltip on link hover</div>
+        </div>
+        <label class="pg-toggle">
+          <input type="checkbox" id="toggleHover" checked />
+          <span class="pg-toggle-slider"></span>
+        </label>
+      </div>
+      <div class="pg-setting-row">
+        <div class="pg-setting-info">
+          <div class="pg-setting-name">Dangerous page overlay</div>
+          <div class="pg-setting-desc">Block dangerous pages with warning</div>
+        </div>
+        <label class="pg-toggle">
+          <input type="checkbox" id="toggleOverlay" checked />
+          <span class="pg-toggle-slider"></span>
+        </label>
+      </div>
+      <div class="pg-setting-row">
+        <div class="pg-setting-info">
+          <div class="pg-setting-name">India-language detection</div>
+          <div class="pg-setting-desc">Hindi & Hinglish scam patterns</div>
+        </div>
+        <label class="pg-toggle">
+          <input type="checkbox" id="toggleHindi" checked />
+          <span class="pg-toggle-slider"></span>
+        </label>
+      </div>
+      <div class="pg-setting-row">
+        <div class="pg-setting-info">
+          <div class="pg-setting-name">Strict mode</div>
+          <div class="pg-setting-desc">Lower threshold for suspicious (recommended for banking)</div>
+        </div>
+        <label class="pg-toggle">
+          <input type="checkbox" id="toggleStrict" />
+          <span class="pg-toggle-slider"></span>
+        </label>
+      </div>
+      <button class="pg-settings-close" id="settingsClose">Done</button>
+    </div>
+
+    <!-- Footer -->
+    <footer class="pg-footer">
+      <span>PhishGuard by NEXUS BUILDERS</span>
+      <span class="pg-footer-dot">·</span>
+      <a class="pg-footer-link" id="reportLink">Report Issue</a>
+    </footer>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
