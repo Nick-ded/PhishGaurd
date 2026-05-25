@@ -472,8 +472,8 @@
 
   function getVerdictBadgeText(verdict) {
     if (verdict === 'DANGEROUS') return '✕ DANGER';
-    if (verdict === 'SUSPICIOUS') return '🚫 SUSP';
-    return '✓ SAFE';
+    if (verdict === 'SUSPICIOUS') return '⚠ SUSP';
+    return '✓';
   }
 
   function getVerdictIconSvg(tier) {
@@ -552,15 +552,13 @@
     const verdict = result.verdict || 'SAFE';
     const tier = getVerdictTier(verdict);
     const score = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const label = getVerdictBadgeText(verdict);
+    // For safe: just show ✓, no score. For warn/danger: show label + score
+    const inner = verdict === 'SAFE'
+      ? `${getVerdictIconSvg(tier)}<span>${escHtml(label)}</span>`
+      : `${getVerdictIconSvg(tier)}<span>${escHtml(label)}</span><span>·</span><span>${score}</span>`;
 
-    return `
-      <span class="pg-badge pg-${tier}" aria-hidden="true">
-        ${getVerdictIconSvg(tier)}
-        <span>${escHtml(getVerdictBadgeText(verdict))}</span>
-        <span>·</span>
-        <span>${score}</span>
-      </span>
-    `;
+    return `<span class="pg-badge pg-${tier}" aria-hidden="true">${inner}</span>`;
   }
 
   function buildTooltipMarkup(result, domain) {
@@ -604,7 +602,11 @@
     const badge = document.createElement('span');
     badge.className = 'pg-badge';
     badge.classList.add(`pg-${tier}`);
-    badge.innerHTML = `${getVerdictIconSvg(tier)}<span>${escHtml(getVerdictBadgeText(result.verdict || 'SAFE'))}</span><span>·</span><span>${Math.max(0, Math.min(100, Number(result.score || 0)))}</span>`;
+    const safeLabel = getVerdictBadgeText(result.verdict || 'SAFE');
+    const safeScore = Math.max(0, Math.min(100, Number(result.score || 0)));
+    badge.innerHTML = result.verdict === 'SAFE' || !result.verdict
+      ? `${getVerdictIconSvg(tier)}<span>${escHtml(safeLabel)}</span>`
+      : `${getVerdictIconSvg(tier)}<span>${escHtml(safeLabel)}</span><span>·</span><span>${safeScore}</span>`;
 
     const tooltip = document.createElement('span');
     tooltip.className = 'pg-badge-tooltip';
@@ -655,7 +657,10 @@
 
     if (badge) {
       badge.className = `pg-badge pg-${tier}`;
-      badge.innerHTML = `${getVerdictIconSvg(tier)}<span>${escHtml(getVerdictBadgeText(result.verdict || 'SAFE'))}</span><span>·</span><span>${score}</span>`;
+      const updatedLabel = getVerdictBadgeText(result.verdict || 'SAFE');
+      badge.innerHTML = result.verdict === 'SAFE' || !result.verdict
+        ? `${getVerdictIconSvg(tier)}<span>${escHtml(updatedLabel)}</span>`
+        : `${getVerdictIconSvg(tier)}<span>${escHtml(updatedLabel)}</span><span>·</span><span>${score}</span>`;
     }
 
     if (tooltip) {
@@ -731,7 +736,9 @@
 
     const badge = document.createElement('span');
     badge.className = `pg-badge pg-${tier}`;
-    badge.innerHTML = `${getVerdictIconSvg(tier)}<span>${escHtml(badgeLabel)}</span><span>·</span><span>${score}</span>`;
+    badge.innerHTML = verdict === 'SAFE'
+      ? `${getVerdictIconSvg(tier)}<span>${escHtml(badgeLabel)}</span>`
+      : `${getVerdictIconSvg(tier)}<span>${escHtml(badgeLabel)}</span><span>·</span><span>${score}</span>`;
 
     const tooltip = document.createElement('span');
     tooltip.className = 'pg-badge-tooltip';
@@ -1255,9 +1262,25 @@
     await ensureTooltipReady();
     if (requestId !== hoverState.requestId) return;
 
-    renderHoverLoading(urlString);
+    // Show quick local result immediately — no loading skeleton
+    const quickResult = readCache(hoverCache, urlString) || quickURLScan(urlString);
+    const quickReasons = Array.isArray(quickResult.flags)
+      ? quickResult.flags.map((flag) => typeof flag === 'object' ? flag.text : flag)
+      : [];
+    renderHoverPopup({
+      verdict: quickResult.verdict || 'SAFE',
+      score: typeof quickResult.score === 'number' ? quickResult.score : 0,
+      domain: getDisplayDomain(urlString),
+      url: urlString,
+      reasons: quickReasons.length ? quickReasons : ['No major threats found'],
+      redirectTarget: '',
+      dangerousRedirect: false,
+      offlineMode: true,
+      result: quickResult
+    });
     positionHoverPopup(link);
 
+    // Now fetch the full async result and update if still hovering
     const baseResult = await scanHoverUrl(urlString);
     if (requestId !== hoverState.requestId) return;
 
@@ -1292,11 +1315,10 @@
       reasons = [...reasons, redirectCandidate.reason];
     }
 
-    const domain = getDisplayDomain(urlString);
     renderHoverPopup({
       verdict,
       score,
-      domain,
+      domain: getDisplayDomain(urlString),
       url: urlString,
       reasons,
       redirectTarget,
