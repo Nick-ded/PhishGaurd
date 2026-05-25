@@ -79,7 +79,7 @@ function setSerpBadge(tabId, dangerCount, suspiciousCount) {
     badgeText = `${Number(dangerCount)}⚠`;
     badgeColor = '#E24B4A';
   } else if (Number(suspiciousCount || 0) > 0) {
-    badgeText = `${Number(suspiciousCount)}?`;
+    badgeText = `${Number(suspiciousCount)}⚠`;
     badgeColor = '#BA7517';
   }
 
