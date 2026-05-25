@@ -222,6 +222,23 @@ function updateStats(verdict) {
   saveStats();
 }
 
+function sendTabMessage(tabId, message) {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.sendMessage(tabId, message, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve(null);
+          return;
+        }
+
+        resolve(response || null);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 // ── Hover link scan (lightweight, URL-only) ───────────────────
 async function scanHoverLink(urlString) {
   if (!urlString) return null;
@@ -310,10 +327,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       // If dangerous, notify content script to show overlay
       if (result.verdict === 'DANGEROUS' && tabId) {
-        chrome.tabs.sendMessage(tabId, {
+        sendTabMessage(tabId, {
           type: 'SHOW_WARNING',
           result
-        }).catch(() => {});
+        });
       }
     });
 
@@ -415,7 +432,9 @@ chrome.webNavigation.onCompleted.addListener((details) => {
   updateBadge(details.tabId, 'SCANNING');
 
   // Request page data from content script
-  chrome.tabs.sendMessage(details.tabId, { type: 'REQUEST_PAGE_DATA' }).catch(() => {
+  sendTabMessage(details.tabId, { type: 'REQUEST_PAGE_DATA' }).then((response) => {
+    if (response) return;
+
     // Content script may not be ready yet; try URL-only scan
     const urlAnalysis = PhishGuardDetector.analyzeURL(details.url);
     const verdict = urlAnalysis.trusted ? 'SAFE' :

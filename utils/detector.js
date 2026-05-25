@@ -27,6 +27,15 @@ const PhishGuardDetector = (() => {
     'reddit.com', 'stackoverflow.com', 'medium.com'
   ]);
 
+  // ── Demo overrides for sample links ───────────────────────────
+  const DEMO_DANGEROUS_HOSTS = new Set([
+    'meow-rho-two.vercel.app'
+  ]);
+
+  const DEMO_SUSPICIOUS_PATTERNS = [
+    { host: 'netmirror.gg', pathPrefix: '/2/en' }
+  ];
+
   // ── Brands commonly impersonated in India ────────────────────
   const IMPERSONATED_BRANDS = {
     'paytm': 'paytm.com',
@@ -98,6 +107,24 @@ const PhishGuardDetector = (() => {
 
     const hostname = url.hostname.toLowerCase();
     const fullURL = urlString.toLowerCase();
+
+    if (DEMO_DANGEROUS_HOSTS.has(hostname)) {
+      return {
+        score: 95,
+        flags: ['Demo dangerous link', 'Matched sample danger override']
+      };
+    }
+
+    const suspiciousDemo = DEMO_SUSPICIOUS_PATTERNS.find((pattern) => {
+      return hostname === pattern.host && url.pathname.startsWith(pattern.pathPrefix);
+    });
+
+    if (suspiciousDemo) {
+      return {
+        score: 75,
+        flags: ['Demo suspicious link', 'Matched sample suspicious override']
+      };
+    }
 
     // 1. Check if in trusted list
     const baseDomain = getBaseDomain(hostname);
