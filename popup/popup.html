@@ -37,6 +37,28 @@
           </div>
         </div>
         <div class="pg-verdict-score" id="verdictScore">0/100</div>
+
+        <!-- Health Safety Bar -->
+        <div class="pg-health-bar-wrap" aria-label="Website safety score">
+          <div class="pg-health-bar-track">
+            <div class="pg-health-bar-fill" id="healthBarFill" style="width:0%"></div>
+            <div class="pg-health-bar-marker" id="healthBarMarker" style="left:0%"></div>
+          </div>
+          <div class="pg-health-bar-labels">
+            <span class="pg-hbl-safe">Safe</span>
+            <span class="pg-hbl-suspicious">Suspicious</span>
+            <span class="pg-hbl-danger">Dangerous</span>
+          </div>
+          <div class="pg-health-bar-zones" aria-hidden="true">
+            <span class="pg-hbz pg-hbz-safe">0–40</span>
+            <span class="pg-hbz pg-hbz-suspicious">50–65</span>
+            <span class="pg-hbz pg-hbz-danger">65–100</span>
+          </div>
+          <div class="pg-health-bar-pct" id="healthBarPct">
+            <span id="healthBarPctValue">0%</span>
+            <span class="pg-health-bar-pct-label" id="healthBarPctLabel">Risk Score</span>
+          </div>
+        </div>
       </section>
 
       <section class="pg-stats-row" aria-label="Page stats">

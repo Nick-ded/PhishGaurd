@@ -19,6 +19,10 @@ const dom = {
   verdictTitle: document.getElementById('verdictTitle'),
   verdictSubtitle: document.getElementById('verdictSubtitle'),
   verdictScore: document.getElementById('verdictScore'),
+  healthBarFill: document.getElementById('healthBarFill'),
+  healthBarMarker: document.getElementById('healthBarMarker'),
+  healthBarPctValue: document.getElementById('healthBarPctValue'),
+  healthBarPctLabel: document.getElementById('healthBarPctLabel'),
   statLinks: document.getElementById('statLinks'),
   statAds: document.getElementById('statAds'),
   statSuspicious: document.getElementById('statSuspicious'),
@@ -317,6 +321,33 @@ function renderVerdict(result, url) {
   dom.verdictScore.textContent = `${score}/100`;
   dom.currentUrl.textContent = truncateUrl(url || state.url || '');
   setLiveState(true);
+
+  // Update health bar
+  updateHealthBar(score, verdict);
+}
+
+function updateHealthBar(score, verdict) {
+  const pct = score; // score is already 0–100
+  const pctStr = `${pct}%`;
+
+  // Animate bar fill and marker
+  dom.healthBarFill.style.width = pctStr;
+  dom.healthBarMarker.style.left = pctStr;
+
+  // Update percentage display
+  dom.healthBarPctValue.textContent = pctStr;
+
+  // Update label based on zone thresholds
+  // ≤40 → Safe, 41–64 → Suspicious, 65–100 → Likely Dangerous
+  let zoneLabel;
+  if (score <= 40) {
+    zoneLabel = 'Safe Zone';
+  } else if (score <= 64) {
+    zoneLabel = 'Suspicious Zone';
+  } else {
+    zoneLabel = 'Danger Zone';
+  }
+  dom.healthBarPctLabel.textContent = zoneLabel;
 }
 
 function applyFallback(url) {

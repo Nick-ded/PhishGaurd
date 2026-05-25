@@ -219,6 +219,133 @@ button, input {
   color: var(--danger);
 }
 
+/* ── Health Safety Bar ─────────────────────────────────────── */
+.pg-health-bar-wrap {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(94, 107, 86, 0.14);
+}
+
+.pg-health-bar-track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    rgba(39, 80, 10, 0.18) 0%,
+    rgba(39, 80, 10, 0.18) 40%,
+    rgba(186, 117, 23, 0.22) 40%,
+    rgba(186, 117, 23, 0.22) 65%,
+    rgba(163, 45, 45, 0.22) 65%,
+    rgba(163, 45, 45, 0.22) 100%
+  );
+  overflow: visible;
+}
+
+.pg-health-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--green);
+  transition: width 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+              background 0.35s ease;
+  max-width: 100%;
+}
+
+.pg-verdict-card.pg-safe    .pg-health-bar-fill { background: var(--green); }
+.pg-verdict-card.pg-suspicious .pg-health-bar-fill { background: var(--amber); }
+.pg-verdict-card.pg-dangerous  .pg-health-bar-fill { background: var(--danger); }
+
+.pg-health-bar-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2.5px solid var(--green);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+  transition: left 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.35s ease;
+  z-index: 2;
+}
+
+.pg-verdict-card.pg-safe    .pg-health-bar-marker { border-color: var(--green); }
+.pg-verdict-card.pg-suspicious .pg-health-bar-marker { border-color: var(--amber); }
+.pg-verdict-card.pg-dangerous  .pg-health-bar-marker { border-color: var(--danger); }
+
+/* Zone dividers */
+.pg-health-bar-track::before,
+.pg-health-bar-track::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  border-radius: 1px;
+  background: rgba(255,255,255,0.7);
+  z-index: 1;
+}
+.pg-health-bar-track::before { left: 40%; }
+.pg-health-bar-track::after  { left: 65%; }
+
+.pg-health-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pg-hbl-safe       { color: var(--green);  flex: 0 0 40%; text-align: left; }
+.pg-hbl-suspicious { color: var(--amber);  flex: 0 0 25%; text-align: center; }
+.pg-hbl-danger     { color: var(--danger); flex: 0 0 35%; text-align: right; }
+
+.pg-health-bar-zones {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1px;
+  font-size: 8.5px;
+  color: var(--text-dim);
+}
+
+.pg-hbz { flex: 1; }
+.pg-hbz-safe       { text-align: left; }
+.pg-hbz-suspicious { text-align: center; }
+.pg-hbz-danger     { text-align: right; }
+
+.pg-health-bar-pct {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+#healthBarPctValue {
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--green);
+  transition: color 0.35s ease;
+}
+
+.pg-verdict-card.pg-safe    #healthBarPctValue { color: var(--green); }
+.pg-verdict-card.pg-suspicious #healthBarPctValue { color: var(--amber); }
+.pg-verdict-card.pg-dangerous  #healthBarPctValue { color: var(--danger); }
+
+.pg-health-bar-pct-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 .pg-stats-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
