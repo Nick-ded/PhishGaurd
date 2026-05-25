@@ -374,8 +374,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       storePageStats(tabId, url, pageData, result);
       sendResponse({ success: true, result });
 
-      // If dangerous, notify content script to show overlay
-      if (result.verdict === 'DANGEROUS' && tabId) {
+      // If dangerous or suspicious, notify content script to show overlay
+      if ((result.verdict === 'DANGEROUS' || result.verdict === 'SUSPICIOUS') && tabId) {
         sendTabMessage(tabId, {
           type: 'SHOW_WARNING',
           result

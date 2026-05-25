@@ -1347,41 +1347,115 @@
     if (warningOverlayShown) return;
     warningOverlayShown = true;
 
+    const verdict = result.verdict || 'DANGEROUS';
     const domain = (() => { try { return new URL(result.url).hostname; } catch { return result.url; } })();
     const flags = (result.flags || []).slice(0, 5).map((flag) => typeof flag === 'object' ? flag.text : flag);
+    const score = Math.max(0, Math.min(100, Number(result.score || result.urlScore || 0)));
+
+    // Convert threat score to safety score for display (inverted)
+    const safetyScore = verdict === 'DANGEROUS' 
+      ? Math.round(44 - ((score - 55) / 45) * 44)
+      : verdict === 'SUSPICIOUS'
+      ? Math.round(69 - ((score - 25) / 29) * 24)
+      : 70;
+
+    const verdictConfig = {
+      DANGEROUS: {
+        icon: '🔴',
+        badge: 'DANGEROUS WEBSITE',
+        headline: 'This website is dangerous',
+        advice: 'Do NOT enter your OTP, PIN, password, UPI credentials, Aadhaar, or PAN on this page.',
+        color: '#A32D2D'
+      },
+      SUSPICIOUS: {
+        icon: '⚠️',
+        badge: 'SUSPICIOUS WEBSITE',
+        headline: 'This website looks suspicious',
+        advice: 'Proceed with extreme caution. Verify the website URL carefully before entering any personal information.',
+        color: '#BA7517'
+      }
+    };
+
+    const config = verdictConfig[verdict] || verdictConfig.DANGEROUS;
 
     const overlay = document.createElement('div');
     overlay.id = 'pg-page-overlay';
     overlay.innerHTML = `
       <div class="pg-overlay-box">
-        <div class="pg-ov-logo">🛡️ GuardianAI</div>
-        <div class="pg-ov-verdict-badge">⚠ DANGEROUS PAGE DETECTED</div>
-        <h2 class="pg-ov-headline">This page may be a phishing or scam site</h2>
-        <div class="pg-ov-domain">${escHtml(domain)}</div>
-        <div class="pg-ov-reasons">
-          <div class="pg-ov-reasons-title">Warning indicators found:</div>
-          ${flags.map((flag) => `<div class="pg-ov-flag">🔴 ${escHtml(flag)}</div>`).join('')}
+        <div class="pg-ov-header">
+          <div class="pg-ov-brand">
+            <span class="pg-ov-shield">🛡️</span>
+            <div class="pg-ov-brand-text">
+              <div class="pg-ov-brand-title">PhishGuard</div>
+              <div class="pg-ov-brand-subtitle">Website Protection</div>
+            </div>
+          </div>
         </div>
-        <p class="pg-ov-advice">Do NOT enter your OTP, PIN, password, UPI credentials, Aadhaar, or PAN on this page.</p>
+
+        <div class="pg-ov-verdict-card pg-ov-${verdict.toLowerCase()}">
+          <div class="pg-ov-verdict-icon">${config.icon}</div>
+          <div class="pg-ov-verdict-badge">${config.badge}</div>
+          <h2 class="pg-ov-headline">${config.headline}</h2>
+          <div class="pg-ov-domain-label">Blocked website:</div>
+          <div class="pg-ov-domain">${escHtml(domain)}</div>
+          
+          <div class="pg-ov-score-section">
+            <div class="pg-ov-score-row">
+              <span class="pg-ov-score-label">Safety Score</span>
+              <span class="pg-ov-score-value">${safetyScore}/100</span>
+            </div>
+            <div class="pg-ov-health-bar">
+              <div class="pg-ov-health-fill" style="width: ${safetyScore}%"></div>
+            </div>
+            <div class="pg-ov-health-labels">
+              <span>Dangerous</span>
+              <span>Suspicious</span>
+              <span>Safe</span>
+            </div>
+          </div>
+
+          ${flags.length > 0 ? `
+          <div class="pg-ov-reasons">
+            <div class="pg-ov-reasons-title">⚠️ Warning indicators:</div>
+            ${flags.map((flag) => `<div class="pg-ov-flag">• ${escHtml(flag)}</div>`).join('')}
+          </div>
+          ` : ''}
+
+          <div class="pg-ov-advice">${config.advice}</div>
+        </div>
+
         <div class="pg-ov-actions">
-          <button class="pg-ov-btn-back" id="pg-ov-back">← Go Back to Safety</button>
-          <button class="pg-ov-btn-ignore" id="pg-ov-ignore">Dismiss Warning</button>
+          <button class="pg-ov-btn pg-ov-btn-back" id="pg-ov-back">
+            <span>← Go Back</span>
+          </button>
+          <button class="pg-ov-btn pg-ov-btn-continue" id="pg-ov-continue">
+            <span>Continue Anyway</span>
+          </button>
         </div>
-        <div class="pg-ov-report" id="pg-ov-report">Report as false positive</div>
+
+        <div class="pg-ov-footer">
+          <button class="pg-ov-report-btn" id="pg-ov-report">Report false positive</button>
+        </div>
       </div>
     `;
 
     document.body.prepend(overlay);
     document.body.style.overflow = 'hidden';
 
-    document.getElementById('pg-ov-back').onclick = () => history.back();
-    document.getElementById('pg-ov-ignore').onclick = () => {
+    document.getElementById('pg-ov-back').onclick = () => {
+      history.back();
+    };
+
+    document.getElementById('pg-ov-continue').onclick = () => {
       overlay.remove();
       document.body.style.overflow = '';
+      warningOverlayShown = false;
     };
+
     document.getElementById('pg-ov-report').onclick = () => {
       chrome.runtime.sendMessage({ type: 'REPORT_FALSE_POSITIVE', url: result.url });
       document.getElementById('pg-ov-report').textContent = '✓ Reported — thank you!';
+      document.getElementById('pg-ov-report').disabled = true;
     };
   }
 
