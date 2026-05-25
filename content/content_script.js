@@ -457,21 +457,21 @@
   }
 
   function getVerdictBadgeText(verdict) {
-    if (verdict === 'DANGEROUS') return '✕';
-    if (verdict === 'SUSPICIOUS') return '⚠ SUSP';
-    return '✓';
+    if (verdict === 'DANGEROUS') return '✕ DANGER';
+    if (verdict === 'SUSPICIOUS') return '🚫 SUSP';
+    return '✓ SAFE';
   }
 
   function getVerdictIconSvg(tier) {
     if (tier === 'danger') {
-      return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 2 3 6.5V12c0 5.1 3.5 9.8 9 10 5.5-.2 9-4.9 9-10V6.5L12 2Zm0 5.5c.6 0 1 .4 1 1v4.2c0 .6-.4 1-1 1s-1-.4-1-1V8.5c0-.6.4-1 1-1Zm0 9c-.8 0-1.4-.6-1.4-1.4s.6-1.4 1.4-1.4 1.4.6 1.4 1.4-.6 1.4-1.4 1.4Z"/></svg>';
+      return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 8l8 8M16 8l-8 8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
     }
 
     if (tier === 'warn') {
-      return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M1.8 20.5h20.4L12 2.5 1.8 20.5Zm10.2-3.1c-.8 0-1.4-.6-1.4-1.4s.6-1.4 1.4-1.4 1.4.6 1.4 1.4-.6 1.4-1.4 1.4Zm1-3.7h-2l-.2-5.5h2.4l-.2 5.5Z"/></svg>';
+      return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7.5 7.5 16.5 16.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
     }
 
-    return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 2 4 5v6c0 5 3.2 9.4 8 11 4.8-1.6 8-6 8-11V5l-8-3Zm-1 12.4-2.6-2.6 1.4-1.4L11 11.6l4.2-4.2 1.4 1.4-5.6 5.6Z"/></svg>';
+    return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 4 5 8v8l7 4 7-4V8l-7-4Z"/></svg>';
   }
 
   function normalizeFlagText(flag) {
@@ -1462,6 +1462,11 @@
     if (message.type === 'REQUEST_PAGE_DATA') {
       sendResponse(extractPageData());
       runPageScan();
+      return true;
+    }
+
+    if (message.type === 'GET_PAGE_INSIGHTS' || message.type === 'REQUEST_PAGE_INSIGHTS') {
+      sendResponse(extractPageInsights());
       return true;
     }
 

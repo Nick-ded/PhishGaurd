@@ -34,6 +34,9 @@ const dom = {
   formsValue: document.getElementById('formsValue'),
   cacheIcon: document.getElementById('cacheIcon'),
   cacheValue: document.getElementById('cacheValue'),
+  pageSignalsSummary: document.getElementById('pageSignalsSummary'),
+  pageLinkList: document.getElementById('pageLinkList'),
+  pageAdSignals: document.getElementById('pageAdSignals'),
   rescanBtn: document.getElementById('rescanBtn'),
   settingsBtn: document.getElementById('settingsBtn'),
   reportBtn: document.getElementById('reportBtn'),
@@ -51,6 +54,7 @@ const state = {
   url: '',
   verdict: null,
   pageStats: null,
+  pageInsights: null,
   settings: {
     hoverScan: true,
     overlay: true,
@@ -63,13 +67,21 @@ function svgMarkup(path) {
   return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="${path}"/></svg>`;
 }
 
+function escHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function iconFor(type) {
   const icons = {
     shield: svgMarkup('M12 2 4 5v6c0 5 3.2 9.4 8 11 4.8-1.6 8-6 8-11V5l-8-3Zm-1 12.4-2.6-2.6 1.4-1.4L11 11.6l4.2-4.2 1.4 1.4-5.6 5.6Z'),
     globe: svgMarkup('M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 9h-2.8a15.3 15.3 0 0 0-1.2-4.1A8.02 8.02 0 0 1 18.9 11Zm-3.3 2h2.8a8.02 8.02 0 0 1-4 4.1c.6-1.2 1-2.6 1.2-4.1ZM12 4.1c.9 1.1 1.7 2.8 2.1 4.9h-4.2c.4-2.1 1.2-3.8 2.1-4.9ZM4.1 13h2.8c.2 1.5.6 2.9 1.2 4.1A8.02 8.02 0 0 1 4.1 13Zm2.8-2H4.1a8.02 8.02 0 0 1 4-4.1c-.6 1.2-1 2.6-1.2 4.1Zm5.1 8.9c-.9-1.1-1.7-2.8-2.1-4.9h4.2c-.4 2.1-1.2 3.8-2.1 4.9Zm1.1-6.9h-4.4a13.7 13.7 0 0 1 0-2h4.4a13.7 13.7 0 0 1 0 2Z'),
     safe: svgMarkup('M12 2 3 6.5V12c0 5.1 3.5 9.8 9 10 5.5-.2 9-4.9 9-10V6.5L12 2Zm0 5.5c.6 0 1 .4 1 1v4.2c0 .6-.4 1-1 1s-1-.4-1-1V8.5c0-.6.4-1 1-1Zm0 9c-.8 0-1.4-.6-1.4-1.4s.6-1.4 1.4-1.4 1.4.6 1.4 1.4-.6 1.4-1.4 1.4Z'),
-    suspicious: svgMarkup('M1.8 20.5h20.4L12 2.5 1.8 20.5Zm10.2-3.1c-.8 0-1.4-.6-1.4-1.4s.6-1.4 1.4-1.4 1.4.6 1.4 1.4-.6 1.4-1.4 1.4Zm1-3.7h-2l-.2-5.5h2.4l-.2 5.5Z'),
-    danger: svgMarkup('M12 2 3 6.5V12c0 5.1 3.5 9.8 9 10 5.5-.2 9-4.9 9-10V6.5L12 2Zm0 5.5c.6 0 1 .4 1 1v4.2c0 .6-.4 1-1 1s-1-.4-1-1V8.5c0-.6.4-1 1-1Zm0 9c-.8 0-1.4-.6-1.4-1.4s.6-1.4 1.4-1.4 1.4.6 1.4 1.4-.6 1.4-1.4 1.4Z')
+    suspicious: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7.5 7.5 16.5 16.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+    danger: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 8l8 8M16 8l-8 8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>'
   };
 
   return icons[type] || icons.safe;
@@ -228,6 +240,70 @@ function renderStats(stats) {
   dom.cacheValue.className = `pg-detail-value${Number(safeStats.cacheRemainingMs || 0) <= 0 ? '' : ' pg-amber'}`;
 }
 
+function verdictTier(verdict) {
+  if (verdict === 'DANGEROUS') return 'danger';
+  if (verdict === 'SUSPICIOUS') return 'warn';
+  return 'safe';
+}
+
+function verdictLabel(verdict) {
+  if (verdict === 'DANGEROUS') return 'Dangerous';
+  if (verdict === 'SUSPICIOUS') return 'Suspicious';
+  if (verdict === 'SAFE') return 'Safe';
+  return 'Unknown';
+}
+
+function renderPageSignals(insights) {
+  const safeInsights = insights || {};
+  const links = Array.isArray(safeInsights.links) ? safeInsights.links : [];
+  const adCounts = safeInsights.adCounts || {};
+  const adScriptCount = Number(adCounts.scripts || 0);
+  const pixelCount = Number(adCounts.trackingPixels || 0);
+  const redirectCount = Number(adCounts.redirectLinks || 0);
+  const metaRefreshCount = Number(adCounts.metaRefresh || 0);
+
+  dom.pageSignalsSummary.textContent = `${links.length} links · ${adScriptCount + pixelCount + redirectCount + metaRefreshCount} ad signals`;
+  dom.pageAdSignals.innerHTML = `
+    <span class="pg-signal-chip">Ad scripts ${adScriptCount}</span>
+    <span class="pg-signal-chip">Tracking pixels ${pixelCount}</span>
+    <span class="pg-signal-chip">Redirect links ${redirectCount}</span>
+    <span class="pg-signal-chip">Meta refresh ${metaRefreshCount}</span>
+  `;
+
+  if (!links.length) {
+    dom.pageLinkList.innerHTML = '<div class="pg-empty-state">No links found on this page yet.</div>';
+    return;
+  }
+
+  dom.pageLinkList.innerHTML = links.slice(0, 8).map((link) => {
+    const tier = verdictTier(link.verdict);
+    const score = Number(link.score || 0);
+    const text = link.text || link.domain || link.url || 'Untitled link';
+    const domain = link.domain || link.url || '';
+    const extras = [];
+    if (link.isAd) extras.push('<span class="pg-link-mini-tag pg-link-mini-tag-ad">Ad</span>');
+    if (link.isRedirect) extras.push('<span class="pg-link-mini-tag pg-link-mini-tag-redirect">Redirect</span>');
+    if (link.redirectReason) extras.push(`<span class="pg-link-mini-tag pg-link-mini-tag-muted">${escHtml(link.redirectReason)}</span>`);
+
+    return `
+      <div class="pg-link-row pg-link-row-${tier}">
+        <div class="pg-link-row-main">
+          <span class="pg-link-row-icon" aria-hidden="true">${iconFor(tier === 'danger' ? 'danger' : tier === 'warn' ? 'suspicious' : 'safe')}</span>
+          <div class="pg-link-row-copy">
+            <div class="pg-link-row-title">${escHtml(text)}</div>
+            <div class="pg-link-row-domain">${escHtml(domain)}</div>
+          </div>
+        </div>
+        <div class="pg-link-row-meta">
+          <span class="pg-link-pill pg-link-pill-${tier}">${escHtml(verdictLabel(link.verdict))}</span>
+          <span class="pg-link-score">${score}/100</span>
+        </div>
+        <div class="pg-link-row-tags">${extras.join('')}</div>
+      </div>
+    `;
+  }).join('');
+}
+
 function renderVerdict(result, url) {
   const verdict = result && result.verdict ? result.verdict : 'SAFE';
   const score = Math.max(0, Math.min(100, Number((result && (result.score ?? result.urlScore)) || 0)));
@@ -279,9 +355,10 @@ async function loadCurrentTab() {
     state.tabId = tab.id;
     state.url = tab.url || '';
 
-    const [verdictResponse, statsResponse] = await Promise.all([
+    const [verdictResponse, statsResponse, insightsResponse] = await Promise.all([
       safeSendMessage({ type: 'GET_VERDICT', url: state.url }),
-      safeSendMessage({ type: 'GET_PAGE_STATS', tabId: state.tabId })
+      safeSendMessage({ type: 'GET_PAGE_STATS', tabId: state.tabId }),
+      safeSendTabMessage(state.tabId, { type: 'GET_PAGE_INSIGHTS' })
     ]);
 
     const verdict = verdictResponse && verdictResponse.result
@@ -289,6 +366,7 @@ async function loadCurrentTab() {
       : (isRenderableUrl(state.url) ? quickURLScan(state.url) : neutralResult());
     state.verdict = verdict;
     state.pageStats = statsResponse && statsResponse.result ? statsResponse.result : null;
+    state.pageInsights = insightsResponse || null;
 
     renderVerdict(verdict, state.url);
     renderStats(state.pageStats || {
@@ -303,9 +381,11 @@ async function loadCurrentTab() {
       cacheRemainingMs: 0,
       tlsValid: state.url.startsWith('https:')
     });
+    renderPageSignals(state.pageInsights);
   } catch {
     setLiveState(false);
     applyFallback(state.url);
+    renderPageSignals(null);
   }
 }
 
