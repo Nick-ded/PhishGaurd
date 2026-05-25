@@ -407,6 +407,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'GSB_LOOKUP') {
+    // Direct GSB check for popup — used when local scan says SAFE but site is unknown
+    if (!message.url) { sendResponse({ result: null }); return true; }
+    ThreatIntel.loadApiKeys().then(async (keys) => {
+      if (!keys.googleSafeBrowsing) { sendResponse({ result: null }); return; }
+      try {
+        const endpoint = `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${keys.googleSafeBrowsing}`;
+        const body = {
+          client: { clientId: 'phishguard-extension', clientVersion: '1.2.0' },
+          threatInfo: {
+            threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE', 'POTENTIALLY_HARMFUL_APPLICATION'],
+            platformTypes: ['ANY_PLATFORM'],
+            threatEntryTypes: ['URL'],
+            threatEntries: [{ url: message.url }]
+          }
+        };
+        const resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!resp.ok) { sendResponse({ result: null }); return; }
+        const data = await resp.json();
+        if (data.matches && data.matches.length > 0) {
+          const types = data.matches.map(m => m.threatType);
+          const result = {
+            verdict: 'DANGEROUS',
+            score: 100,
+            urlScore: 100,
+            flags: types.map(t => {
+              if (t === 'SOCIAL_ENGINEERING') return { type: 'threat_intel', text: 'Confirmed phishing site (Google Safe Browsing)' };
+              if (t === 'MALWARE') return { type: 'threat_intel', text: 'Confirmed malware site (Google Safe Browsing)' };
+              return { type: 'threat_intel', text: `Flagged by Google Safe Browsing: ${t}` };
+            }),
+            url: message.url,
+            timestamp: Date.now()
+          };
+          rememberCache(message.url, result);
+          sendResponse({ result });
+        } else {
+          sendResponse({ result: null }); // clean
+        }
+      } catch { sendResponse({ result: null }); }
+    });
+    return true;
+  }
+
   if (message.type === 'HOVER_LINK') {
     scanHoverLink(message.url).then(result => {
       sendResponse({ result });

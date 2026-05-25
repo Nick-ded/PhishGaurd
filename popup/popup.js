@@ -672,6 +672,19 @@ async function loadCurrentTab() {
     });
     renderPageSignals(state.pageInsights);
 
+    // If local scan says SAFE but site is not in trusted list,
+    // fire a GSB lookup to catch unknown flagged sites
+    if (scanResult.verdict === 'SAFE' && !scanResult.trusted && isRenderableUrl(state.url)) {
+      safeSendMessage({ type: 'GSB_LOOKUP', url: state.url }).then((resp) => {
+        if (resp && resp.result && resp.result.verdict && resp.result.verdict !== 'SAFE') {
+          renderVerdict(resp.result, state.url);
+          state.verdict = resp.result;
+          // Update suspicious count in stats
+          renderStats(Object.assign({}, state.pageStats || {}, { suspicious: 1 }));
+        }
+      }).catch(() => {});
+    }
+
     // Poll once after 1.5s in case the full scan completes after popup opens
     setTimeout(() => {
       safeSendMessage({ type: 'GET_VERDICT', url: state.url }).then((resp) => {
