@@ -167,9 +167,11 @@ const KNOWN_BAD_DOMAINS_POPUP = new Set([
   'rdxhd.com', 'skymovies.in', 'uwatchfree.com',
   // Music piracy
   'pagalworld.com', 'pagalworld.in', 'pagalworld.is', 'pagalworld.net',
+  'pagalnew.com', 'pagalnew.in', 'pagalnew.net',
   'djpunjab.com', 'djpunjab.net', 'djpunjab.is',
   'mr-jatt.com', 'mrjatt.net', 'songspk.com', 'downloadming.com',
   'wapking.com', 'freshmaza.com', 'mp3mad.com',
+  'raagsong.com', 'mp3skull.com', 'beemp3.com', 'songs.pk',
   // Phishing
   'paytm-kyc.com', 'paytm-verify.com', 'sbi-netbanking.xyz',
   'hdfc-kyc.xyz', 'icici-verify.xyz', 'amazon-offer.xyz',
@@ -178,17 +180,30 @@ const KNOWN_BAD_DOMAINS_POPUP = new Set([
 
 // Piracy tokens — any match = DANGEROUS
 const PIRACY_TOKENS_POPUP = [
+  // Movie/TV
   'movierulz', 'filmyzilla', 'bollyflix', 'vegamovies',
   'kuttymovies', 'tamilyogi', 'moviesda', 'downloadhub',
   'worldfree', 'mp4moviez', 'afilmywap', 'rdxhd',
   'fmovies', 'gomovies', '123movies', 'putlocker',
   'soap2day', 'solarmovie', 'primewire', 'watchseries',
   'lookmovie', 'netmirror', 'iosmirror', 'tamilrockers',
-  'piratebay', 'kickasstorrent', 'rarbg', 'jiorockers',
-  'isaimini', 'cinemavilla', 'skymovies',
+  'piratebay', 'kickasstorrent', 'rarbg', '1337x',
+  'jiorockers', 'isaimini', 'cinemavilla', 'skymovies',
+  'katmovies', 'limetorrent', 'eztv', 'desiremovies',
+  'bolly4u', 'khatrimaza', 'filmywap', 'moviesflix',
+  'hdmoviespoint', 'moviescounter', 'moviespur', 'movieswood',
+  'tamilgun', 'tamilmv', 'tamilblasters', 'moviezwap',
+  'jalshamoviez', 'filmyhit', 'filmypur', 'filmymeet',
+  'filmyhunk', 'filmyfly', 'filmyzap', 'filmybaap',
+  // Anime piracy
+  'kissanime', 'gogoanime', 'animepahe', '9anime', 'hianime',
+  // Sports piracy
+  'vipbox', 'footybite', 'streameast', 'crackstreams',
+  'buffstreams', 'sportsurge', 'hesgoal',
   // Music piracy
-  'pagalworld', 'djpunjab', 'mrjatt', 'mr-jatt', 'songspk',
+  'pagalworld', 'pagalnew', 'djpunjab', 'mrjatt', 'mr-jatt', 'songspk',
   'downloadming', 'wapking', 'freshmaza', 'mp3mad', 'mp3skull',
+  'raagsong', 'beemp3',
   // Game cracks
   'fitgirl', 'skidrow', 'crackwatch', 'steamunlock'
 ];

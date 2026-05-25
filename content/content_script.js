@@ -312,8 +312,8 @@
 
   // Known piracy tokens for quick inline badge detection (mirrors detector.js)
   const PIRACY_TOKENS_CONTENT = [
-    'pagalworld', 'djpunjab', 'mr-jatt', 'mrjatt', 'songspk', 'downloadming',
-    'wapking', 'mp3mad', 'mp3skull', 'freshmaza', 'beemp3',
+    'pagalworld', 'pagalnew', 'djpunjab', 'mr-jatt', 'mrjatt', 'songspk', 'downloadming',
+    'wapking', 'mp3mad', 'mp3skull', 'freshmaza', 'beemp3', 'raagsong',
     'movierulz', 'filmyzilla', 'bollyflix', 'vegamovies', 'tamilrockers',
     'kuttymovies', 'tamilyogi', 'moviesda', 'downloadhub', 'worldfree',
     'mp4moviez', 'afilmywap', 'rdxhd', 'skymovies', 'fmovies', 'gomovies',
