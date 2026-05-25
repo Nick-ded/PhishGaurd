@@ -1093,3 +1093,127 @@ button, input {
 [hidden] {
   display: none !important;
 }
+
+/* ── API Key Settings ──────────────────────────────────────── */
+.pg-settings-section-title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin-top: 12px;
+  margin-bottom: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(94, 107, 86, 0.14);
+}
+
+.pg-settings-section-copy {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.pg-settings-section-copy a {
+  color: var(--green-weak);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pg-api-key-row {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(94, 107, 86, 0.1);
+}
+
+.pg-api-key-label {
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.pg-api-key-hint {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.pg-api-key-hint a {
+  color: var(--green-weak);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pg-api-key-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pg-api-key-input {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 11px;
+  outline: none;
+  transition: border-color 120ms ease;
+  min-width: 0;
+}
+
+.pg-api-key-input:focus {
+  border-color: var(--green-weak);
+}
+
+.pg-api-key-toggle {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 120ms ease;
+}
+
+.pg-api-key-toggle:hover {
+  background: #e8f0e0;
+}
+
+.pg-api-key-status {
+  font-size: 10px;
+  font-weight: 600;
+  min-height: 14px;
+  color: var(--text-muted);
+}
+
+.pg-api-key-status.ok   { color: var(--green-weak); }
+.pg-api-key-status.warn { color: var(--amber); }
+
+/* Make settings panel scrollable for the extra content */
+.pg-settings-panel {
+  overflow-y: auto;
+  max-height: calc(100vh - 20px);
+}
+
+.pg-api-key-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.pg-api-key-status.warn {
+  color: var(--amber);
+}

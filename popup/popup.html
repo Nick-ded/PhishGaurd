@@ -18,7 +18,7 @@
       </div>
       <div class="pg-live-pill" id="livePill">
         <span class="pg-live-dot" id="liveDot"></span>
-        <span id="liveLabel">Live</span>
+        <span id="liveLabel">Offline</span>
       </div>
     </header>
 
@@ -45,18 +45,18 @@
             <div class="pg-health-bar-marker" id="healthBarMarker" style="left:0%"></div>
           </div>
           <div class="pg-health-bar-labels">
-            <span class="pg-hbl-safe">SAFE ZONE</span>
-            <span class="pg-hbl-suspicious">SUSPICIOUS</span>
-            <span class="pg-hbl-danger">DANGEROUS</span>
+            <span class="pg-hbl-safe">Safe</span>
+            <span class="pg-hbl-suspicious">Suspicious</span>
+            <span class="pg-hbl-danger">Dangerous</span>
           </div>
           <div class="pg-health-bar-zones" aria-hidden="true">
-            <span class="pg-hbz pg-hbz-safe">71–100</span>
-            <span class="pg-hbz pg-hbz-suspicious">45–70</span>
-            <span class="pg-hbz pg-hbz-danger">0–44</span>
+            <span class="pg-hbz pg-hbz-safe">0–24</span>
+            <span class="pg-hbz pg-hbz-suspicious">25–54</span>
+            <span class="pg-hbz pg-hbz-danger">55–100</span>
           </div>
           <div class="pg-health-bar-pct" id="healthBarPct">
             <span id="healthBarPctValue">0%</span>
-            <span class="pg-health-bar-pct-label" id="healthBarPctLabel">Trust Score</span>
+            <span class="pg-health-bar-pct-label" id="healthBarPctLabel">Risk Score</span>
           </div>
         </div>
       </section>
@@ -195,15 +195,66 @@
         </label>
       </div>
 
-      <div class="pg-setting-row pg-hf-row">
-        <div style="width:100%;">
-          <div class="pg-setting-label">Hugging Face API token</div>
-          <div class="pg-setting-copy">Optional ML boost for full page scans</div>
-          <input type="password" id="hfTokenInput" class="pg-hf-input" placeholder="hf_..." />
+      <!-- Live Threat Intelligence API Keys -->
+      <div class="pg-settings-section-title">Live Threat Intelligence</div>
+      <div class="pg-settings-section-copy">
+        Connect to real-time threat databases to catch newly flagged phishing sites beyond the built-in rules.
+        Keys are stored locally and never sent anywhere except the respective API.
+      </div>
+
+      <div class="pg-api-key-row">
+        <label class="pg-api-key-label" for="keyGSB">
+          Google Safe Browsing
+          <span class="pg-api-key-hint">
+            <a href="https://developers.google.com/safe-browsing/v4/get-started" target="_blank" rel="noopener">Get free key ↗</a>
+            · 10k req/day
+          </span>
+        </label>
+        <div class="pg-api-key-input-wrap">
+          <input type="password" id="keyGSB" class="pg-api-key-input" placeholder="AIza..." autocomplete="off" spellcheck="false" />
+          <button class="pg-api-key-toggle" type="button" data-target="keyGSB" aria-label="Show/hide key">👁</button>
+        </div>
+        <div class="pg-api-key-status-row">
+          <div class="pg-api-key-status" id="statusGSB"></div>
+          <div class="pg-api-key-status" id="rateStatusGSB"></div>
         </div>
       </div>
 
-      <button class="pg-settings-save pg-hf-save" id="saveHfToken" type="button">Save token</button>
+      <div class="pg-api-key-row">
+        <label class="pg-api-key-label" for="keyVT">
+          VirusTotal
+          <span class="pg-api-key-hint">
+            <a href="https://www.virustotal.com/gui/join-us" target="_blank" rel="noopener">Get free key ↗</a>
+            · 4 req/min
+          </span>
+        </label>
+        <div class="pg-api-key-input-wrap">
+          <input type="password" id="keyVT" class="pg-api-key-input" placeholder="64-char hex key" autocomplete="off" spellcheck="false" />
+          <button class="pg-api-key-toggle" type="button" data-target="keyVT" aria-label="Show/hide key">👁</button>
+        </div>
+        <div class="pg-api-key-status-row">
+          <div class="pg-api-key-status" id="statusVT"></div>
+          <div class="pg-api-key-status" id="rateStatusVT"></div>
+        </div>
+      </div>
+
+      <div class="pg-api-key-row">
+        <label class="pg-api-key-label" for="keyPT">
+          PhishTank
+          <span class="pg-api-key-hint">
+            <a href="https://www.phishtank.com/api_register.php" target="_blank" rel="noopener">Get free key ↗</a>
+            · optional
+          </span>
+        </label>
+        <div class="pg-api-key-input-wrap">
+          <input type="password" id="keyPT" class="pg-api-key-input" placeholder="Optional API key" autocomplete="off" spellcheck="false" />
+          <button class="pg-api-key-toggle" type="button" data-target="keyPT" aria-label="Show/hide key">👁</button>
+        </div>
+        <div class="pg-api-key-status-row">
+          <div class="pg-api-key-status" id="statusPT"></div>
+          <div class="pg-api-key-status" id="rateStatusPT"></div>
+        </div>
+      </div>
 
       <button class="pg-settings-save" id="settingsSave" type="button">Done</button>
     </section>

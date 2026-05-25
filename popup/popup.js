@@ -1,5 +1,13 @@
 'use strict';
 
+const TRUSTED_DOMAINS = new Set([
+  'google.com', 'youtube.com', 'facebook.com', 'twitter.com',
+  'instagram.com', 'linkedin.com', 'github.com', 'wikipedia.org',
+  'amazon.com', 'amazon.in', 'flipkart.com', 'paytm.com',
+  'phonepe.com', 'sbi.co.in', 'hdfcbank.com', 'icicibank.com',
+  'microsoft.com', 'apple.com'
+]);
+
 const dom = {
   headerShield: document.getElementById('headerShield'),
   urlGlobe: document.getElementById('urlGlobe'),
@@ -43,8 +51,13 @@ const dom = {
   toggleOverlay: document.getElementById('toggleOverlay'),
   toggleHindi: document.getElementById('toggleHindi'),
   toggleStrict: document.getElementById('toggleStrict'),
-  hfTokenInput: document.getElementById('hfTokenInput'),
-  saveHfToken: document.getElementById('saveHfToken')
+  // API key fields
+  keyGSB: document.getElementById('keyGSB'),
+  keyVT: document.getElementById('keyVT'),
+  keyPT: document.getElementById('keyPT'),
+  statusGSB: document.getElementById('statusGSB'),
+  statusVT: document.getElementById('statusVT'),
+  statusPT: document.getElementById('statusPT')
 };
 
 const state = {
@@ -101,29 +114,176 @@ function safeSendMessage(message) {
   });
 }
 
-function setIcon(el, type) {
-  if (!el) return;
-  el.innerHTML = iconFor(type);
+function safeSendTabMessage(tabId, message) {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.sendMessage(tabId, message, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve(null);
+          return;
+        }
+        resolve(response || null);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
-function setLiveState() {
-  dom.liveDot.classList.add('pg-live');
-  dom.liveLabel.textContent = 'Live';
+// Brands commonly impersonated — must match detector.js
+const IMPERSONATED_BRANDS = {
+  'paytm': 'paytm.com', 'phonepe': 'phonepe.com', 'gpay': 'gpay.app',
+  'sbi': 'sbi.co.in', 'hdfc': 'hdfcbank.com', 'icici': 'icicibank.com',
+  'axis': 'axisbank.com', 'kotak': 'kotak.com', 'uidai': 'uidai.gov.in',
+  'aadhar': 'uidai.gov.in', 'irctc': 'irctc.co.in', 'amazon': 'amazon.in',
+  'flipkart': 'flipkart.com', 'jio': 'jio.com', 'airtel': 'airtel.in',
+  'bsnl': 'bsnl.co.in', 'epfo': 'epfindia.gov.in',
+  'paypal': 'paypal.com', 'netflix': 'netflix.com',
+  'microsoft': 'microsoft.com', 'apple': 'apple.com'
+  // 'google', 'lic', 'itr', 'pan', 'vi', 'axis' removed — too many substring false positives
+};
+
+const SUSPICIOUS_TLDS_POPUP = [
+  '.xyz', '.tk', '.ml', '.ga', '.cf', '.gq', '.pw', '.top',
+  '.click', '.link', '.online', '.site', '.website', '.space',
+  '.loan', '.work', '.party', '.review', '.win', '.bid',
+  '.stream', '.download', '.racing'
+];
+
+function getBaseDomainPopup(hostname) {
+  const parts = hostname.split('.');
+  if (parts.length <= 2) return hostname;
+  if (['co', 'org', 'gov', 'net', 'edu'].includes(parts[parts.length - 2])) {
+    return parts.slice(-3).join('.');
+  }
+  return parts.slice(-2).join('.');
 }
 
-function formatVerdictTitle(verdict) {
-  if (verdict === 'SAFE') return 'Safe · Verified Domain';
-  if (verdict === 'SUSPICIOUS') return 'Suspicious · Proceed with caution';
-  if (verdict === 'DANGEROUS') return 'Dangerous · Do not proceed';
+function quickURLScan(urlString) {
+  let url;
+  try {
+    url = new URL(urlString);
+  } catch {
+    return { verdict: 'DANGEROUS', score: 90, flags: ['Invalid URL'], trusted: false };
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  const baseDomain = getBaseDomainPopup(hostname);
+  if (TRUSTED_DOMAINS.has(baseDomain)) {
+    return { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain'], trusted: true };
+  }
+
+  let score = 0;
+  const flags = [];
+  const fullURL = urlString.toLowerCase();
+
+  // HTTP (not HTTPS)
+  if (url.protocol === 'http:') {
+    score += 20;
+    flags.push('Not using HTTPS — data may be transmitted insecurely');
+  }
+
+  // IP address as hostname
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+    score += 40;
+    flags.push('Uses raw IP address instead of domain name');
+  }
+
+  // Punycode / homograph
+  if (hostname.includes('xn--')) {
+    score += 35;
+    flags.push('Punycode/homograph domain detected (character spoofing)');
+  }
+
+  // Suspicious TLD
+  const tld = '.' + hostname.split('.').pop();
+  if (SUSPICIOUS_TLDS_POPUP.includes(tld)) {
+    score += 25;
+    flags.push(`Suspicious top-level domain: ${tld}`);
+  }
+
+  // Brand impersonation — word-boundary check to avoid false positives
+  // e.g. 'pan' must NOT match 'japan', 'vi' must NOT match 'video'
+  for (const [brand, legitimateDomain] of Object.entries(IMPERSONATED_BRANDS)) {
+    const brandRe = new RegExp(`(^|[^a-z0-9])${brand}([^a-z0-9]|$)`);
+    if (brandRe.test(hostname) && !hostname.endsWith(legitimateDomain)) {
+      score += 40;
+      flags.push(`Impersonating "${brand}" (legitimate: ${legitimateDomain})`);
+      break;
+    }
+  }
+
+  // Suspicious tokens in domain
+  const suspiciousTokens = [
+    'login', 'signin', 'verify', 'secure', 'update', 'confirm',
+    'account', 'banking', 'payment', 'wallet', 'kyc', 'otp',
+    'support', 'helpdesk', 'refund', 'claim', 'reward', 'free',
+    'winner', 'lucky', 'prize', 'offer'
+  ];
+  const found = suspiciousTokens.filter((token) => hostname.includes(token));
+  if (found.length > 0) {
+    score += Math.min(found.length * 10, 30);
+    flags.push(`Suspicious keywords in domain: ${found.join(', ')}`);
+  }
+
+  // Excessive subdomains
+  const subdomainCount = hostname.split('.').length - 2;
+  if (subdomainCount >= 3) {
+    score += 20;
+    flags.push(`Unusually deep subdomain structure (${subdomainCount} levels)`);
+  }
+
+  // @ symbol in URL
+  if (url.href.includes('@')) {
+    score += 35;
+    flags.push('@ symbol in URL — could be used to hide the real destination');
+  }
+
+  // Very long URL
+  if (urlString.length > 200) {
+    score += 15;
+    flags.push('Abnormally long URL');
+  }
+
+  // Redirect parameters
+  if (['redirect', 'url=', 'next=', 'return=', 'goto='].some((p) => fullURL.includes(p))) {
+    score += 20;
+    flags.push('URL contains redirect parameters');
+  }
+
+  // Free hosting platforms
+  const freeHosting = ['blogspot', 'wordpress', 'weebly', 'wixsite', 'sites.google'];
+  const usedFreeHost = freeHosting.find((h) => hostname.includes(h));
+  if (usedFreeHost) {
+    score += 15;
+    flags.push(`Hosted on free platform (${usedFreeHost})`);
+  }
+
+  const verdict = score >= 55 ? 'DANGEROUS' : score >= 25 ? 'SUSPICIOUS' : 'SAFE';
+  return { verdict, score: Math.min(score, 100), flags, trusted: false };
+}
+
+function isRenderableUrl(urlString) {
+  return /^https?:\/\//i.test(String(urlString || ''));
+}
+
+function neutralResult() {
+  return { verdict: 'UNKNOWN', score: 0, flags: [] };
+}
+
+function formatVerdictTitle(verdict, trusted) {
+  if (verdict === 'DANGEROUS') return 'Dangerous · Blocked';
+  if (verdict === 'SUSPICIOUS') return 'Suspicious · Needs Review';
+  if (verdict === 'SAFE') return trusted ? 'Safe · Verified Domain' : 'Safe · No Threats Found';
   return 'Unknown · No Data';
 }
 
-function formatVerdictSubtitle(verdict, score, heuristics) {
-  const count = Array.isArray(heuristics) ? heuristics.length : 0;
-  if (verdict === 'SAFE') return `Trust score ${score}/100 · ${count ? `${count} rule hits` : 'No threats found'}`;
-  if (verdict === 'SUSPICIOUS') return `Trust score ${score}/100 · ${count ? `${count} risk signals` : 'Potential risk signals'}`;
-  if (verdict === 'DANGEROUS') return `Trust score ${score}/100 · ${count ? `${count} danger signals` : 'Threats detected'}`;
-  return `Trust score ${score}/100 · Waiting for scan`;
+function formatVerdictSubtitle(verdict, score, flags) {
+  const count = Array.isArray(flags) ? flags.length : 0;
+  if (verdict === 'SAFE') return `Score ${score}/100 · No threats found`;
+  if (verdict === 'SUSPICIOUS') return `Score ${score}/100 · ${count ? `${count} risk signals` : 'Potential risk signals'}`;
+  if (verdict === 'DANGEROUS') return `Score ${score}/100 · ${count ? `${count} threats found` : 'Threats detected'}`;
+  return `Score ${score}/100 · Waiting for scan`;
 }
 
 function formatCache(cacheRemainingMs) {
@@ -132,25 +292,20 @@ function formatCache(cacheRemainingMs) {
   return `${Math.max(1, Math.ceil(remaining / 60000))}m left`;
 }
 
-function updateHealthBar(score) {
-  const trustScore = clamp(Number(score || 0), 0, 100);
-  const pct = `${trustScore}%`;
-
-  dom.healthBarFill.style.width = pct;
-  dom.healthBarMarker.style.left = pct;
-  dom.healthBarPctValue.textContent = pct;
-
-  if (trustScore >= 71) {
-    dom.healthBarPctLabel.textContent = 'SAFE ZONE';
-  } else if (trustScore >= 45) {
-    dom.healthBarPctLabel.textContent = 'SUSPICIOUS';
-  } else {
-    dom.healthBarPctLabel.textContent = 'DANGEROUS';
-  }
+function setIcon(el, type) {
+  if (!el) return;
+  el.innerHTML = iconFor(type);
 }
 
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
+function setLiveState(isLive) {
+  dom.liveDot.classList.toggle('pg-live', !!isLive);
+  dom.liveLabel.textContent = isLive ? 'Live' : 'Offline';
+}
+
+function truncateUrl(url) {
+  const text = String(url || '');
+  if (text.length <= 44) return text;
+  return `${text.slice(0, 20)}…${text.slice(-20)}`;
 }
 
 function renderStats(stats) {
@@ -164,8 +319,8 @@ function renderStats(stats) {
   dom.statAds.textContent = String(adCount);
   dom.statSuspicious.textContent = String(suspiciousCount);
 
-  dom.protocolValue.textContent = safeStats.protocol || 'Unknown';
-  dom.protocolValue.className = `pg-detail-value${String(safeStats.protocol || '').toUpperCase() === 'HTTP' ? ' pg-danger' : ''}`;
+  dom.protocolValue.textContent = safeStats.protocol === 'http:' ? 'HTTP' : safeStats.protocol === 'https:' ? 'HTTPS' : 'Unknown';
+  dom.protocolValue.className = `pg-detail-value${safeStats.protocol === 'http:' ? ' pg-danger' : ''}`;
 
   if (safeStats.tlsValid === true) {
     dom.tlsValue.textContent = 'Valid';
@@ -191,6 +346,19 @@ function renderStats(stats) {
   dom.cacheValue.className = `pg-detail-value${Number(safeStats.cacheRemainingMs || 0) <= 0 ? '' : ' pg-amber'}`;
 }
 
+function verdictTier(verdict) {
+  if (verdict === 'DANGEROUS') return 'danger';
+  if (verdict === 'SUSPICIOUS') return 'warn';
+  return 'safe';
+}
+
+function verdictLabel(verdict) {
+  if (verdict === 'DANGEROUS') return 'Dangerous';
+  if (verdict === 'SUSPICIOUS') return 'Suspicious';
+  if (verdict === 'SAFE') return 'Safe';
+  return 'Unknown';
+}
+
 function renderPageSignals(insights) {
   const safeInsights = insights || {};
   const links = Array.isArray(safeInsights.links) ? safeInsights.links : [];
@@ -209,12 +377,12 @@ function renderPageSignals(insights) {
   `;
 
   if (!links.length) {
-    dom.pageLinkList.innerHTML = '<div class="pg-empty-state">Open a page with links to see per-link verdicts here.</div>';
+    dom.pageLinkList.innerHTML = '<div class="pg-empty-state">No links found on this page yet.</div>';
     return;
   }
 
   dom.pageLinkList.innerHTML = links.slice(0, 8).map((link) => {
-    const verdict = link.verdict || 'SAFE';
+    const tier = verdictTier(link.verdict);
     const score = Number(link.score || 0);
     const text = link.text || link.domain || link.url || 'Untitled link';
     const domain = link.domain || link.url || '';
@@ -222,8 +390,6 @@ function renderPageSignals(insights) {
     if (link.isAd) extras.push('<span class="pg-link-mini-tag pg-link-mini-tag-ad">Ad</span>');
     if (link.isRedirect) extras.push('<span class="pg-link-mini-tag pg-link-mini-tag-redirect">Redirect</span>');
     if (link.redirectReason) extras.push(`<span class="pg-link-mini-tag pg-link-mini-tag-muted">${escHtml(link.redirectReason)}</span>`);
-
-    const tier = verdict === 'DANGEROUS' ? 'danger' : verdict === 'SUSPICIOUS' ? 'warn' : 'safe';
 
     return `
       <div class="pg-link-row pg-link-row-${tier}">
@@ -235,7 +401,7 @@ function renderPageSignals(insights) {
           </div>
         </div>
         <div class="pg-link-row-meta">
-          <span class="pg-link-pill pg-link-pill-${tier}">${escHtml(verdict)}</span>
+          <span class="pg-link-pill pg-link-pill-${tier}">${escHtml(verdictLabel(link.verdict))}</span>
           <span class="pg-link-score">${score}/100</span>
         </div>
         <div class="pg-link-row-tags">${extras.join('')}</div>
@@ -244,36 +410,134 @@ function renderPageSignals(insights) {
   }).join('');
 }
 
-function renderPopup(url, verdictData, statsData, insightsData) {
-  const score = Number(verdictData?.score ?? 50);
-  const verdict = verdictData?.verdict ?? 'SAFE';
-  const heuristics = Array.isArray(verdictData?.heuristics) ? verdictData.heuristics : [];
-  const stats = statsData || {};
+function renderVerdict(result, url) {
+  const verdict = result && result.verdict ? result.verdict : 'SAFE';
+  const score = Math.max(0, Math.min(100, Number((result && (result.score ?? result.urlScore)) || 0)));
+  const flags = result && Array.isArray(result.flags) ? result.flags : [];
+  const trusted = !!(result && result.trusted);
+  const titleClass = verdict === 'DANGEROUS' ? 'dangerous' : verdict === 'SUSPICIOUS' ? 'suspicious' : 'safe';
 
-  setLiveState();
-  dom.currentUrl.textContent = String(url || '');
-
-  dom.verdictCard.className = `pg-verdict-card pg-${verdict === 'DANGEROUS' ? 'dangerous' : verdict === 'SUSPICIOUS' ? 'suspicious' : 'safe'}`;
+  dom.verdictCard.className = `pg-verdict-card pg-${titleClass}`;
   dom.verdictIcon.innerHTML = iconFor(verdict === 'DANGEROUS' ? 'danger' : verdict === 'SUSPICIOUS' ? 'suspicious' : 'safe');
-  dom.verdictTitle.textContent = formatVerdictTitle(verdict);
-  dom.verdictSubtitle.textContent = formatVerdictSubtitle(verdict, score, heuristics);
+  dom.verdictTitle.textContent = formatVerdictTitle(verdict, trusted);
+  dom.verdictSubtitle.textContent = formatVerdictSubtitle(verdict, score, flags);
   dom.verdictScore.textContent = `${score}/100`;
+  dom.currentUrl.textContent = truncateUrl(url || state.url || '');
+  setLiveState(true);
 
-  const verdictColors = {
-    SAFE: '#22863a',
-    SUSPICIOUS: '#b08800',
-    DANGEROUS: '#cb2431'
-  };
-  dom.verdictTitle.style.color = verdictColors[verdict] || verdictColors.SAFE;
-  dom.verdictScore.style.color = verdictColors[verdict] || verdictColors.SAFE;
+  // Update health bar
+  updateHealthBar(score, verdict);
+}
 
-  dom.healthBarFill.style.width = `${score}%`;
-  dom.healthBarMarker.style.left = `${score}%`;
-  dom.healthBarPctValue.textContent = `${score}%`;
-  updateHealthBar(score);
+function updateHealthBar(score, verdict) {
+  const pct = score; // score is already 0–100
+  const pctStr = `${pct}%`;
 
-  renderStats(stats);
-  renderPageSignals(insightsData);
+  // Animate bar fill and marker
+  dom.healthBarFill.style.width = pctStr;
+  dom.healthBarMarker.style.left = pctStr;
+
+  // Update percentage display
+  dom.healthBarPctValue.textContent = pctStr;
+
+  // Update label based on zone thresholds
+  // ≤24 → Safe, 25–54 → Suspicious, 55–100 → Likely Dangerous
+  let zoneLabel;
+  if (score <= 24) {
+    zoneLabel = 'Safe Zone';
+  } else if (score <= 54) {
+    zoneLabel = 'Suspicious Zone';
+  } else {
+    zoneLabel = 'Danger Zone';
+  }
+  dom.healthBarPctLabel.textContent = zoneLabel;
+}
+
+function applyFallback(url) {
+  const result = isRenderableUrl(url) ? quickURLScan(url || '') : neutralResult();
+  renderVerdict(result, url);
+  renderStats({
+    links: 0,
+    ads: 0,
+    suspicious: result.verdict === 'SAFE' ? 0 : 1,
+    externalLinks: 0,
+    protocol: (() => {
+      try { return new URL(url).protocol; } catch { return 'unknown'; }
+    })(),
+    hasSensitiveForms: 0,
+    cacheRemainingMs: 0,
+    tlsValid: null
+  });
+  setLiveState(false);
+}
+
+async function loadCurrentTab() {
+  try {
+    const tabs = await new Promise((resolve) => {
+      chrome.tabs.query({ active: true, currentWindow: true }, resolve);
+    });
+
+    if (!tabs || !tabs.length) {
+      state.url = '';
+      setLiveState(false);
+      dom.currentUrl.textContent = 'Waiting for tab...';
+      applyFallback('');
+      return;
+    }
+
+    const tab = tabs[0];
+    state.tabId = tab.id;
+    state.url = tab.url || '';
+
+    const [verdictResponse, statsResponse, insightsResponse] = await Promise.all([
+      safeSendMessage({ type: 'GET_VERDICT', url: state.url }),
+      safeSendMessage({ type: 'GET_PAGE_STATS', tabId: state.tabId }),
+      safeSendTabMessage(state.tabId, { type: 'GET_PAGE_INSIGHTS' })
+    ]);
+
+    const scanResult = verdictResponse && verdictResponse.result
+      ? verdictResponse.result
+      : (isRenderableUrl(state.url) ? quickURLScan(state.url) : neutralResult());
+    state.verdict = scanResult;
+    state.pageStats = statsResponse && statsResponse.result ? statsResponse.result : null;
+    state.pageInsights = insightsResponse || null;
+
+    renderVerdict(scanResult, state.url);
+    renderStats(state.pageStats || {
+      links: 0,
+      ads: 0,
+      suspicious: scanResult.verdict === 'SAFE' ? 0 : 1,
+      externalLinks: 0,
+      protocol: (() => {
+        try { return new URL(state.url).protocol; } catch { return 'https:'; }
+      })(),
+      hasSensitiveForms: 0,
+      cacheRemainingMs: 0,
+      tlsValid: state.url.startsWith('https:')
+    });
+    renderPageSignals(state.pageInsights);
+  } catch {
+    setLiveState(false);
+    applyFallback(state.url);
+    renderPageSignals(null);
+  }
+}
+
+async function triggerRescan() {
+  if (!state.tabId) return;
+  dom.rescanBtn.disabled = true;
+  dom.rescanBtn.textContent = 'Scanning...';
+  await safeSendTabMessage(state.tabId, { type: 'REQUEST_PAGE_DATA' });
+  setTimeout(() => {
+    dom.rescanBtn.disabled = false;
+    dom.rescanBtn.textContent = '↻ Rescan';
+    loadCurrentTab().catch(() => {});
+  }, 250);
+}
+
+function toggleSettings(forceOpen) {
+  const next = typeof forceOpen === 'boolean' ? forceOpen : dom.settingsPanel.hidden;
+  dom.settingsPanel.hidden = !next;
 }
 
 function loadSettings() {
@@ -312,53 +576,56 @@ function saveSettings() {
   }
 }
 
-function saveHfToken() {
-  const value = String(dom.hfTokenInput?.value || '').trim();
-  chrome.storage.local.set({ hf_token: value }, () => {
-    if (!dom.saveHfToken) return;
-    dom.saveHfToken.textContent = 'Saved ✓';
-    setTimeout(() => {
-      dom.saveHfToken.textContent = 'Save token';
-    }, 1500);
-  });
+// ── API key management ────────────────────────────────────────
+function loadApiKeys() {
+  safeSendMessage({ type: 'GET_API_KEYS' }).then((response) => {
+    const keys = response && response.keys ? response.keys : {};
+    if (dom.keyGSB) dom.keyGSB.value = keys.googleSafeBrowsing || '';
+    if (dom.keyVT)  dom.keyVT.value  = keys.virusTotal || '';
+    if (dom.keyPT)  dom.keyPT.value  = keys.phishTank || '';
+    updateApiKeyStatus(dom.statusGSB, keys.googleSafeBrowsing);
+    updateApiKeyStatus(dom.statusVT,  keys.virusTotal);
+    updateApiKeyStatus(dom.statusPT,  keys.phishTank);
+  }).catch(() => {});
 }
 
-function loadHfToken() {
-  chrome.storage.local.get('hf_token', (result) => {
-    if (result && result.hf_token && dom.hfTokenInput) {
-      dom.hfTokenInput.value = result.hf_token;
-    }
-  });
-}
-
-function toggleSettings(forceOpen) {
-  const next = typeof forceOpen === 'boolean' ? forceOpen : dom.settingsPanel.hidden;
-  dom.settingsPanel.hidden = !next;
-}
-
-function bindEvents() {
-  dom.rescanBtn.addEventListener('click', () => {
-    loadPopupData();
-  });
-
-  dom.settingsBtn.addEventListener('click', () => toggleSettings(true));
-  dom.settingsClose.addEventListener('click', () => toggleSettings(false));
-  dom.settingsSave.addEventListener('click', () => {
-    saveSettings();
-    toggleSettings(false);
-  });
-
-  [dom.toggleHover, dom.toggleOverlay, dom.toggleHindi, dom.toggleStrict].forEach((input) => {
-    input.addEventListener('change', saveSettings);
-  });
-
-  dom.reportBtn.addEventListener('click', () => {
-    reportFalsePositive().catch(() => {});
-  });
-
-  if (dom.saveHfToken) {
-    dom.saveHfToken.addEventListener('click', saveHfToken);
+function updateApiKeyStatus(statusEl, keyValue) {
+  if (!statusEl) return;
+  if (keyValue && keyValue.trim().length > 0) {
+    statusEl.textContent = '✓ Key saved';
+    statusEl.className = 'pg-api-key-status ok';
+  } else {
+    statusEl.textContent = 'Not configured — local detection only';
+    statusEl.className = 'pg-api-key-status';
   }
+}
+
+function saveApiKeys() {
+  const keys = {
+    googleSafeBrowsing: dom.keyGSB ? dom.keyGSB.value.trim() : '',
+    virusTotal:         dom.keyVT  ? dom.keyVT.value.trim()  : '',
+    phishTank:          dom.keyPT  ? dom.keyPT.value.trim()  : ''
+  };
+  safeSendMessage({ type: 'SAVE_API_KEYS', keys }).then(() => {
+    updateApiKeyStatus(dom.statusGSB, keys.googleSafeBrowsing);
+    updateApiKeyStatus(dom.statusVT,  keys.virusTotal);
+    updateApiKeyStatus(dom.statusPT,  keys.phishTank);
+  }).catch(() => {});
+}
+
+// ── Rate-limit status display ─────────────────────────────────
+function loadRateStatus() {
+  safeSendMessage({ type: 'GET_RATE_STATUS' }).then((response) => {
+    if (!response || !response.status) return;
+    const s = response.status;
+    ['gsb', 'vt', 'pt'].forEach((key) => {
+      const el = document.getElementById(`rateStatus${key.toUpperCase()}`);
+      if (!el || !s[key]) return;
+      const { used, max, windowLabel, available } = s[key];
+      el.textContent = `${used}/${max} ${windowLabel}`;
+      el.className = 'pg-api-key-status' + (available ? '' : ' warn');
+    });
+  }).catch(() => {});
 }
 
 async function reportFalsePositive() {
@@ -370,28 +637,40 @@ async function reportFalsePositive() {
   }, 1200);
 }
 
-async function loadPopupData() {
-  const tabs = await new Promise((resolve) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, resolve);
+function bindEvents() {
+  dom.rescanBtn.addEventListener('click', () => {
+    triggerRescan().catch(() => {});
   });
 
-  const [tab] = tabs || [];
-  if (!tab) return;
+  dom.settingsBtn.addEventListener('click', () => {
+    toggleSettings(true);
+    loadApiKeys();
+    loadRateStatus();
+  });
+  dom.settingsClose.addEventListener('click', () => toggleSettings(false));
+  dom.settingsSave.addEventListener('click', () => {
+    saveSettings();
+    saveApiKeys();
+    toggleSettings(false);
+  });
 
-  state.tabId = tab.id;
-  state.url = tab.url || '';
+  [dom.toggleHover, dom.toggleOverlay, dom.toggleHindi, dom.toggleStrict].forEach((input) => {
+    input.addEventListener('change', saveSettings);
+  });
 
-  chrome.runtime.sendMessage({ type: 'GET_VERDICT', url: tab.url }, (verdictData) => {
-    chrome.runtime.sendMessage({ type: 'GET_PAGE_STATS', tabId: tab.id }, (statsData) => {
-      chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_INSIGHTS' }, (insightsData) => {
-        if (chrome.runtime.lastError) {
-          renderPopup(tab.url, verdictData, statsData, null);
-          return;
-        }
-
-        renderPopup(tab.url, verdictData, statsData, insightsData);
-      });
+  // Show/hide API key toggle buttons
+  document.querySelectorAll('.pg-api-key-toggle').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.dataset.target;
+      const input = document.getElementById(targetId);
+      if (!input) return;
+      input.type = input.type === 'password' ? 'text' : 'password';
+      btn.textContent = input.type === 'password' ? '👁' : '🙈';
     });
+  });
+
+  dom.reportBtn.addEventListener('click', () => {
+    reportFalsePositive().catch(() => {});
   });
 }
 
@@ -407,13 +686,11 @@ function decorateIcons() {
   setIcon(dom.cacheIcon, 'safe');
 }
 
-function bootstrap() {
+async function bootstrap() {
   decorateIcons();
   loadSettings();
-  loadHfToken();
   bindEvents();
-  setLiveState();
-  loadPopupData();
+  await loadCurrentTab();
 }
 
 bootstrap();
