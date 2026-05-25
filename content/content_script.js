@@ -33,16 +33,114 @@
 
   const REDIRECT_PARAM_PATTERNS = ['?url=', '?redirect=', '?goto=', '?link='];
 
+  // ── Safe alternatives — real, free, legal options ────────────
+  // Each entry: { name, url, free: true/false, note }
+  // Shown when user visits a dangerous/suspicious site
   const SAFE_ALTERNATIVES = {
-    streaming: ['netflix.com', 'primevideo.com', 'hotstar.com', 'youtube.com', 'sonyliv.com', 'zee5.com'],
-    banking: ['sbi.co.in', 'hdfcbank.com', 'icicibank.com', 'axisbank.com', 'kotak.com'],
-    shopping: ['amazon.in', 'flipkart.com', 'myntra.com', 'meesho.com'],
-    payment: ['paytm.com', 'phonepe.com', 'googlepay.app', 'whatsapp.com'],
-    social: ['facebook.com', 'instagram.com', 'twitter.com', 'youtube.com', 'linkedin.com'],
-    email: ['gmail.com', 'outlook.com', 'mail.yahoo.com'],
-    dating: ['bumble.com', 'hinge.app'],
-    gaming: ['epicgames.com', 'store.steampowered.com', 'ubisoft.com']
+    // Piracy / illegal streaming → free legal streaming
+    streaming: [
+      { name: 'YouTube', url: 'youtube.com', free: true, note: 'Free movies & shows' },
+      { name: 'Pluto TV', url: 'pluto.tv', free: true, note: '100% free, no signup' },
+      { name: 'Tubi', url: 'tubitv.com', free: true, note: 'Free movies & TV' },
+      { name: 'Crackle', url: 'crackle.com', free: true, note: 'Free Sony movies' },
+      { name: 'MX Player', url: 'mxplayer.in', free: true, note: 'Free Indian content' },
+      { name: 'JioCinema', url: 'jiocinema.com', free: true, note: 'Free with Jio' },
+      { name: 'Hotstar', url: 'hotstar.com', free: false, note: 'Paid — Disney+ content' },
+      { name: 'SonyLIV', url: 'sonyliv.com', free: false, note: 'Paid — Sony content' }
+    ],
+    // Piracy game repacks → free legal game sources
+    gaming: [
+      { name: 'Epic Games', url: 'store.epicgames.com', free: true, note: 'Free games weekly' },
+      { name: 'Steam', url: 'store.steampowered.com', free: false, note: 'Paid — largest PC store' },
+      { name: 'GOG', url: 'gog.com', free: true, note: 'Free games + DRM-free' },
+      { name: 'Itch.io', url: 'itch.io', free: true, note: 'Thousands of free indie games' },
+      { name: 'Xbox Game Pass', url: 'xbox.com/game-pass', free: false, note: 'Subscription — 100s of games' },
+      { name: 'Humble Bundle', url: 'humblebundle.com', free: true, note: 'Pay-what-you-want bundles' }
+    ],
+    // Torrent / piracy general
+    torrent: [
+      { name: 'Internet Archive', url: 'archive.org', free: true, note: 'Free legal downloads' },
+      { name: 'Project Gutenberg', url: 'gutenberg.org', free: true, note: 'Free ebooks' },
+      { name: 'Open Library', url: 'openlibrary.org', free: true, note: 'Free book borrowing' }
+    ],
+    // Banking / KYC phishing
+    banking: [
+      { name: 'SBI Official', url: 'sbi.co.in', free: true, note: 'Official SBI website' },
+      { name: 'HDFC Bank', url: 'hdfcbank.com', free: true, note: 'Official HDFC website' },
+      { name: 'ICICI Bank', url: 'icicibank.com', free: true, note: 'Official ICICI website' },
+      { name: 'Axis Bank', url: 'axisbank.com', free: true, note: 'Official Axis website' }
+    ],
+    // Shopping
+    shopping: [
+      { name: 'Amazon India', url: 'amazon.in', free: true, note: 'Trusted marketplace' },
+      { name: 'Flipkart', url: 'flipkart.com', free: true, note: 'Trusted marketplace' },
+      { name: 'Meesho', url: 'meesho.com', free: true, note: 'Budget shopping' },
+      { name: 'Myntra', url: 'myntra.com', free: true, note: 'Fashion & lifestyle' }
+    ],
+    // Payment / UPI phishing
+    payment: [
+      { name: 'Paytm', url: 'paytm.com', free: true, note: 'Official Paytm app' },
+      { name: 'PhonePe', url: 'phonepe.com', free: true, note: 'Official PhonePe' },
+      { name: 'Google Pay', url: 'pay.google.com', free: true, note: 'Official Google Pay' }
+    ],
+    // Social media
+    social: [
+      { name: 'Instagram', url: 'instagram.com', free: true, note: 'Official Instagram' },
+      { name: 'Facebook', url: 'facebook.com', free: true, note: 'Official Facebook' },
+      { name: 'Twitter / X', url: 'x.com', free: true, note: 'Official X' }
+    ],
+    // Music piracy
+    music: [
+      { name: 'Spotify', url: 'spotify.com', free: true, note: 'Free tier available' },
+      { name: 'JioSaavn', url: 'jiosaavn.com', free: true, note: 'Free Indian music' },
+      { name: 'Gaana', url: 'gaana.com', free: true, note: 'Free Indian music' },
+      { name: 'YouTube Music', url: 'music.youtube.com', free: true, note: 'Free with ads' }
+    ]
   };
+
+  // Returns array of { name, url, free, note } for a given domain
+  function getSafeAlternatives(domain) {
+    const h = String(domain || '').toLowerCase();
+
+    // Piracy game repacks / cracks
+    if (/repack|crack|fitgirl|dodi|skidrow|igg.game|ocean.game|steamunlock|pirat/i.test(h)) {
+      return SAFE_ALTERNATIVES.gaming.slice(0, 4);
+    }
+    // Torrent / general piracy
+    if (/torrent|rarbg|piratebay|kickass|1337x|nyaa/i.test(h)) {
+      return SAFE_ALTERNATIVES.torrent.concat(SAFE_ALTERNATIVES.gaming.slice(0, 2));
+    }
+    // Illegal streaming / movies
+    if (/movie|film|watch|series|stream|flix|rockers|rulz|yogi|isai|kutta|moviesda|fmovie|gomovie|soap2|putlock|tamilrock/i.test(h)) {
+      return SAFE_ALTERNATIVES.streaming.slice(0, 4);
+    }
+    // Music piracy
+    if (/mp3|song|music|pagalworld|djpunjab|downloadhub.*music/i.test(h)) {
+      return SAFE_ALTERNATIVES.music.slice(0, 4);
+    }
+    // Banking / KYC phishing
+    if (/bank|kyc|netbank|onlinebank|sbi|hdfc|icici|axis|kotak/i.test(h)) {
+      return SAFE_ALTERNATIVES.banking.slice(0, 3);
+    }
+    // Payment / UPI phishing
+    if (/pay|wallet|upi|transfer|money|paytm|phonepe/i.test(h)) {
+      return SAFE_ALTERNATIVES.payment;
+    }
+    // Shopping
+    if (/shop|store|buy|cart|deal|offer|discount/i.test(h)) {
+      return SAFE_ALTERNATIVES.shopping.slice(0, 3);
+    }
+    // Social media impersonation
+    if (/insta|facebook|twitter|whatsapp|social/i.test(h)) {
+      return SAFE_ALTERNATIVES.social;
+    }
+    // Login / phishing keywords — suggest banking + payment
+    if (/login|signin|account|secure|verify|update|kyc|otp/i.test(h)) {
+      return [...SAFE_ALTERNATIVES.banking.slice(0, 2), ...SAFE_ALTERNATIVES.payment.slice(0, 1)];
+    }
+    // Default — show free streaming as most common use case
+    return SAFE_ALTERNATIVES.streaming.filter(s => s.free).slice(0, 3);
+  }
 
   const hoverCache = new Map();
   const redirectCache = new Map();
@@ -574,37 +672,6 @@
         extensionSettings = { ...extensionSettings, ...result.pg_settings };
       }
     });
-  }
-
-  function getSafeAlternatives(domain) {
-    const hostLower = String(domain || '').toLowerCase();
-
-    // Check if domain belongs to a known category — return alternatives from that category
-    for (const [category, domains] of Object.entries(SAFE_ALTERNATIVES)) {
-      if (domains.some((d) => hostLower.includes(d))) {
-        // Domain matched a known safe site in this category — offer the others as alternatives
-        return domains.filter((d) => !hostLower.includes(d)).slice(0, 3);
-      }
-    }
-
-    // Domain didn't match any known safe site — try keyword-based category detection
-    if (/movie|film|watch|series|stream/i.test(hostLower)) {
-      return SAFE_ALTERNATIVES.streaming.slice(0, 3);
-    }
-    if (/bank|kyc|netbank|onlinebank/i.test(hostLower)) {
-      return SAFE_ALTERNATIVES.banking.slice(0, 3);
-    }
-    if (/shop|store|buy|cart|ecommerce|deal/i.test(hostLower)) {
-      return SAFE_ALTERNATIVES.shopping.slice(0, 3);
-    }
-    if (/pay|wallet|upi|transfer|money/i.test(hostLower)) {
-      return SAFE_ALTERNATIVES.payment.slice(0, 3);
-    }
-    if (/login|signin|account|secure|verify|update/i.test(hostLower)) {
-      // Phishing keywords — suggest safe banking/payment alternatives
-      return [...SAFE_ALTERNATIVES.banking.slice(0, 2), ...SAFE_ALTERNATIVES.payment.slice(0, 1)];
-    }
-    return [];
   }
 
   function normalizeFlagText(flag) {
@@ -1247,14 +1314,15 @@
       if (alternatives.length > 0) {
         const altSection = document.createElement('div');
         altSection.className = 'ga-hover-alternatives';
-        altSection.innerHTML = `<div class="ga-hover-alt-title">✅ Safer alternatives:</div>`;
+        altSection.innerHTML = `<div class="ga-hover-alt-title">✅ Safe alternatives:</div>`;
         alternatives.forEach((alt) => {
           const altLink = document.createElement('a');
-          altLink.href = `https://${alt}`;
+          altLink.href = `https://${alt.url}`;
           altLink.target = '_blank';
           altLink.rel = 'noopener noreferrer';
           altLink.className = 'ga-hover-alt-link';
-          altLink.textContent = alt;
+          altLink.title = alt.note || '';
+          altLink.innerHTML = `${alt.free ? '🆓 ' : ''}${escHtml(alt.name)}`;
           altLink.addEventListener('click', (event) => event.stopPropagation());
           altSection.appendChild(altLink);
         });
@@ -1612,10 +1680,10 @@
 
     const alternativesHtml = alternatives.length > 0 ? `
       <div class="pg-ov-alternatives">
-        <div class="pg-ov-alternatives-title">✅ Safer Alternatives:</div>
+        <div class="pg-ov-alternatives-title">✅ Safe Alternatives:</div>
         ${alternatives.map((alt) => `
-          <a href="https://${alt}" target="_blank" rel="noopener noreferrer" class="pg-ov-alt-link">
-            ${escHtml(alt)}
+          <a href="https://${escHtml(alt.url)}" target="_blank" rel="noopener noreferrer" class="pg-ov-alt-link" title="${escHtml(alt.note || '')}">
+            ${alt.free ? '🆓 ' : ''}${escHtml(alt.name)}
           </a>
         `).join('')}
       </div>
