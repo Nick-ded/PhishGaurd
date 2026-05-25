@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhishGuard Demo</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: linear-gradient(180deg, #f7f7f2, #ece8dc);
+      color: #1f2a19;
+      padding: 32px;
+    }
+    .card {
+      max-width: 920px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 18px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.08);
+      padding: 28px;
+      border: 1px solid #d8d2c1;
+    }
+    h1 { margin: 0 0 8px; }
+    p { line-height: 1.6; }
+    .demo-list { display: grid; gap: 18px; margin-top: 24px; }
+    .demo-block {
+      padding: 18px;
+      border-radius: 16px;
+      background: #faf8f1;
+      border: 1px solid #e2dcc8;
+    }
+    .demo-block h2 { margin: 0 0 8px; font-size: 18px; }
+    .demo-links { display: grid; gap: 10px; margin-top: 14px; }
+    .demo-links a {
+      display: inline-block;
+      word-break: break-all;
+      color: #27500A;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      font-size: 15px;
+    }
+    .note {
+      font-size: 13px;
+      color: #5f6d58;
+      margin-top: 10px;
+    }
+    code {
+      background: #eef3de;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>PhishGuard Demo Page</h1>
+    <p>Use this page to test hover badges, SERP coloring, and the dangerous-page warning flow. Open it in Chrome and hover the links below.</p>
+    <p class="note">If you want full extension behavior on this file, enable <code>Allow access to file URLs</code> for the extension in Chrome.</p>
+
+    <div class="demo-list">
+      <section class="demo-block">
+        <h2>Safe-style link</h2>
+        <div class="demo-links">
+          <a href="https://google.com/search?q=phishguard">https://google.com/search?q=phishguard</a>
+        </div>
+      </section>
+
+      <section class="demo-block">
+        <h2>Suspicious-style link</h2>
+        <div class="demo-links">
+          <a href="https://free-recharge-trick.in/win">https://free-recharge-trick.in/win</a>
+        </div>
+      </section>
+
+      <section class="demo-block">
+        <h2>Dangerous-style link</h2>
+        <div class="demo-links">
+          <a href="http://hdfc-kyc-update.xyz/verify">http://hdfc-kyc-update.xyz/verify</a>
+          <a href="http://sbi-netbanking-login.xyz/secure">http://sbi-netbanking-login.xyz/secure</a>
+        </div>
+        <div class="note">These are test URLs only. The extension should flag the suspicious and dangerous ones.</div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

@@ -990,7 +990,7 @@
     const subtitleMap = {
       SAFE: 'Verified Domain',
       SUSPICIOUS: 'Proceed with Caution',
-      DANGEROUS: 'Do NOT click this link',
+      DANGEROUS: 'This website is dangerous',
       LOADING: 'Analyzing link'
     };
 
@@ -1089,7 +1089,7 @@
     hoverPopupRefs.score.textContent = `${score}/100`;
     hoverPopupRefs.redirect.hidden = !state.redirectTarget;
     hoverPopupRefs.redirect.textContent = state.redirectTarget
-      ? `Redirects to: ${state.redirectTarget}${state.dangerousRedirect ? '  🔴 Dangerous destination detected' : ''}`
+      ? `Redirects to: ${state.redirectTarget}${state.dangerousRedirect ? '  🔴 This destination is dangerous' : ''}`
       : '';
     hoverPopupRefs.offline.hidden = !state.offlineMode;
 
