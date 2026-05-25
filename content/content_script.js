@@ -66,7 +66,9 @@
     lastUrl: '',
     visible: false,
     lastPlacement: null,
-    mutateTimer: null
+    mutateTimer: null,
+    overPopup: false,   // true while cursor is physically inside the popup card
+    hideDelay: null     // timeout ID for the 200 ms grace period
   };
 
   const serpState = {
@@ -496,22 +498,31 @@
 
   function getSafeAlternatives(domain) {
     const hostLower = String(domain || '').toLowerCase();
+
+    // Check if domain belongs to a known category — return alternatives from that category
     for (const [category, domains] of Object.entries(SAFE_ALTERNATIVES)) {
       if (domains.some((d) => hostLower.includes(d))) {
+        // Domain matched a known safe site in this category — offer the others as alternatives
         return domains.filter((d) => !hostLower.includes(d)).slice(0, 3);
       }
-      if (category === 'streaming' && (hostLower.includes('movie') || hostLower.includes('film') || hostLower.includes('watch') || hostLower.includes('watch') || hostLower.includes('series'))) {
-        return SAFE_ALTERNATIVES.streaming;
-      }
-      if (category === 'banking' && (hostLower.includes('bank') || hostLower.includes('kyc'))) {
-        return SAFE_ALTERNATIVES.banking;
-      }
-      if (category === 'shopping' && (hostLower.includes('shop') || hostLower.includes('store') || hostLower.includes('buy'))) {
-        return SAFE_ALTERNATIVES.shopping;
-      }
-      if (category === 'payment' && (hostLower.includes('pay') || hostLower.includes('wallet'))) {
-        return SAFE_ALTERNATIVES.payment;
-      }
+    }
+
+    // Domain didn't match any known safe site — try keyword-based category detection
+    if (/movie|film|watch|series|stream/i.test(hostLower)) {
+      return SAFE_ALTERNATIVES.streaming.slice(0, 3);
+    }
+    if (/bank|kyc|netbank|onlinebank/i.test(hostLower)) {
+      return SAFE_ALTERNATIVES.banking.slice(0, 3);
+    }
+    if (/shop|store|buy|cart|ecommerce|deal/i.test(hostLower)) {
+      return SAFE_ALTERNATIVES.shopping.slice(0, 3);
+    }
+    if (/pay|wallet|upi|transfer|money/i.test(hostLower)) {
+      return SAFE_ALTERNATIVES.payment.slice(0, 3);
+    }
+    if (/login|signin|account|secure|verify|update/i.test(hostLower)) {
+      // Phishing keywords — suggest safe banking/payment alternatives
+      return [...SAFE_ALTERNATIVES.banking.slice(0, 2), ...SAFE_ALTERNATIVES.payment.slice(0, 1)];
     }
     return [];
   }
@@ -906,13 +917,21 @@
     const host = document.createElement('div');
     host.id = 'ga-hover-popup-host';
     host.setAttribute('aria-hidden', 'true');
-    host.style.position = 'fixed';
-    host.style.left = '0';
-    host.style.top = '0';
-    host.style.width = '0';
-    host.style.height = '0';
-    host.style.zIndex = '2147483647';
-    host.style.pointerEvents = 'none';
+    host.setAttribute('data-visible', 'false');
+
+    // All visibility is controlled via inline styles — we never rely on
+    // shadow-DOM CSS to style the host (`:host` is fragile across browsers).
+    host.style.cssText = [
+      'position:fixed',
+      'left:0', 'top:0',
+      'width:0', 'height:0',
+      'z-index:2147483647',
+      'opacity:0',
+      'pointer-events:none',
+      'transform:translateY(6px) scale(0.98)',
+      'transition:opacity 180ms ease,transform 180ms ease',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'
+    ].join(';');
 
     const root = host.attachShadow({ mode: 'open' });
     const shell = document.createElement('div');
@@ -984,6 +1003,19 @@
       event.preventDefault();
       event.stopPropagation();
       hideHoverPopup();
+    });
+
+    // Keep the popup alive while the cursor is inside the card
+    hoverPopupRefs.card.addEventListener('pointerenter', () => {
+      hoverState.overPopup = true;
+      clearTimeout(hoverState.hideDelay);
+    });
+
+    hoverPopupRefs.card.addEventListener('pointerleave', () => {
+      hoverState.overPopup = false;
+      hoverState.hideDelay = setTimeout(() => {
+        if (!hoverState.overPopup) hideHoverPopup();
+      }, 150);
     });
 
     return hoverPopupHost;
@@ -1114,6 +1146,46 @@
     if (verdict === 'SAFE') {
       addButton('Scan Full Page', 'ga-hover-action-secondary', () => runPageScan());
     }
+
+    // Show safe alternative link suggestions for DANGEROUS/SUSPICIOUS links
+    if (verdict === 'DANGEROUS' || verdict === 'SUSPICIOUS') {
+      const domain = getDisplayDomain(urlString);
+      const alternatives = getSafeAlternatives(domain);
+      if (alternatives.length > 0) {
+        const altSection = document.createElement('div');
+        altSection.className = 'ga-hover-alternatives';
+        altSection.innerHTML = `<div class="ga-hover-alt-title">✅ Safer alternatives:</div>`;
+        alternatives.forEach((alt) => {
+          const altLink = document.createElement('a');
+          altLink.href = `https://${alt}`;
+          altLink.target = '_blank';
+          altLink.rel = 'noopener noreferrer';
+          altLink.className = 'ga-hover-alt-link';
+          altLink.textContent = alt;
+          altLink.addEventListener('click', (event) => event.stopPropagation());
+          altSection.appendChild(altLink);
+        });
+        hoverPopupRefs.actions.appendChild(altSection);
+      }
+    }
+  }
+
+  function showPopupHost() {
+    if (!hoverPopupHost) return;
+    hoverPopupHost.setAttribute('data-visible', 'true');
+    hoverPopupHost.setAttribute('aria-hidden', 'false');
+    hoverPopupHost.style.opacity = '1';
+    hoverPopupHost.style.pointerEvents = 'auto';
+    hoverPopupHost.style.transform = 'translateY(0) scale(1)';
+  }
+
+  function hidePopupHost() {
+    if (!hoverPopupHost) return;
+    hoverPopupHost.setAttribute('data-visible', 'false');
+    hoverPopupHost.setAttribute('aria-hidden', 'true');
+    hoverPopupHost.style.opacity = '0';
+    hoverPopupHost.style.pointerEvents = 'none';
+    hoverPopupHost.style.transform = 'translateY(6px) scale(0.98)';
   }
 
   function renderHoverPopup(state) {
@@ -1144,8 +1216,7 @@
       fill.style.transform = `scaleX(${score / 100})`;
     });
 
-    hoverPopupHost.setAttribute('data-visible', 'true');
-    hoverPopupHost.setAttribute('aria-hidden', 'false');
+    showPopupHost();
   }
 
   function renderHoverLoading(urlString) {
@@ -1154,25 +1225,23 @@
     setHoverTheme('LOADING');
     hoverPopupRefs.loading.hidden = false;
     hoverPopupRefs.content.hidden = true;
-    hoverPopupRefs.offline.hidden = false;
-    hoverPopupRefs.offline.textContent = 'Offline mode';
+    hoverPopupRefs.offline.hidden = true;
     hoverPopupRefs.redirect.hidden = true;
-    hoverPopupHost.setAttribute('data-visible', 'true');
-    hoverPopupHost.setAttribute('aria-hidden', 'false');
     hoverPopupRefs.domain.textContent = getDisplayDomain(urlString);
+
+    showPopupHost();
   }
 
   function hideHoverPopup() {
     hoverState.requestId++;
     hoverState.activeLink = null;
     hoverState.lastUrl = '';
+    hoverState.overPopup = false;
     clearTimeout(hoverState.timer);
     clearTimeout(hoverState.mutateTimer);
+    clearTimeout(hoverState.hideDelay);
 
-    if (hoverPopupHost) {
-      hoverPopupHost.setAttribute('data-visible', 'false');
-      hoverPopupHost.setAttribute('aria-hidden', 'true');
-    }
+    hidePopupHost();
   }
 
   async function showHoverPopup(link, event) {
@@ -1310,16 +1379,23 @@
     link.dataset.gaHoverAttached = 'true';
 
     link.addEventListener('pointerenter', (event) => {
+      // Cancel any pending hide so re-entering a link keeps things alive
+      clearTimeout(hoverState.hideDelay);
       scheduleHover(link, event);
     });
 
     link.addEventListener('focus', (event) => {
+      clearTimeout(hoverState.hideDelay);
       scheduleHover(link, event);
     });
 
     link.addEventListener('pointerleave', () => {
       clearTimeout(hoverState.timer);
-      hideHoverPopup();
+      // 250 ms grace period — if the cursor lands on the popup card within
+      // this window, the card's own pointerenter cancels the hide.
+      hoverState.hideDelay = setTimeout(() => {
+        if (!hoverState.overPopup) hideHoverPopup();
+      }, 250);
     });
 
     link.addEventListener('blur', () => {

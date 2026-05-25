@@ -1,36 +1,23 @@
-/* GuardianAI - hover-popup.css
- * Modified: Added the hover popup theme, loading state, verdict states, and responsive placement helpers.
- * New additions: Shadow-DOM popup styling, animated risk bar, action buttons, skeleton loaders, and dark-mode variants.
- * Unchanged: N/A
+/* GuardianAI — hover-popup.css
+ * Injected into the Shadow DOM of #ga-hover-popup-host.
+ * Host-element visibility (opacity, pointer-events, transform, transition)
+ * is controlled entirely via inline styles in content_script.js.
+ * This stylesheet only styles elements INSIDE the shadow root.
  */
 
-#ga-hover-popup-host,
-#ga-hover-popup-host * {
+* {
   box-sizing: border-box;
 }
 
-#ga-hover-popup-host {
-  position: fixed;
-  z-index: 2147483647;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(6px) scale(0.98);
-  transition: opacity 200ms ease, transform 200ms ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #14532d;
-}
-
-#ga-hover-popup-host[data-visible="true"] {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-}
-
-#ga-hover-popup-host .ga-hover-popup {
+/* ── Popup shell (280 px wide card container) ───────────────── */
+.ga-hover-popup {
   width: 280px;
-  pointer-events: none;
+  color: #14532d;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-#ga-hover-popup-host .ga-hover-card {
+/* ── Card ────────────────────────────────────────────────────── */
+.ga-hover-card {
   overflow: hidden;
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
@@ -39,19 +26,12 @@
   pointer-events: auto;
 }
 
-#ga-hover-popup-host .ga-hover-card[data-verdict="SAFE"] {
-  border-color: #22c55e;
-}
+.ga-hover-card[data-verdict="SAFE"]      { border-color: #22c55e; }
+.ga-hover-card[data-verdict="SUSPICIOUS"]{ border-color: #f59e0b; }
+.ga-hover-card[data-verdict="DANGEROUS"] { border-color: #ef4444; }
 
-#ga-hover-popup-host .ga-hover-card[data-verdict="SUSPICIOUS"] {
-  border-color: #f59e0b;
-}
-
-#ga-hover-popup-host .ga-hover-card[data-verdict="DANGEROUS"] {
-  border-color: #ef4444;
-}
-
-#ga-hover-popup-host .ga-hover-header {
+/* ── Header ──────────────────────────────────────────────────── */
+.ga-hover-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -62,22 +42,17 @@
   font-size: 15px;
 }
 
-#ga-hover-popup-host .ga-hover-card[data-verdict="SUSPICIOUS"] .ga-hover-header {
-  background: #d97706;
-}
+.ga-hover-card[data-verdict="SUSPICIOUS"] .ga-hover-header { background: #d97706; }
+.ga-hover-card[data-verdict="DANGEROUS"]  .ga-hover-header { background: #dc2626; }
 
-#ga-hover-popup-host .ga-hover-card[data-verdict="DANGEROUS"] .ga-hover-header {
-  background: #dc2626;
-}
-
-#ga-hover-popup-host .ga-hover-header-left {
+.ga-hover-header-left {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
-#ga-hover-popup-host .ga-hover-icon {
+.ga-hover-icon {
   width: 28px;
   height: 28px;
   display: flex;
@@ -88,23 +63,22 @@
   flex-shrink: 0;
 }
 
-#ga-hover-popup-host .ga-hover-header-text {
-  min-width: 0;
-}
+.ga-hover-header-text { min-width: 0; }
 
-#ga-hover-popup-host .ga-hover-title {
+.ga-hover-title {
   font-size: 15px;
   font-weight: 600;
   line-height: 1.2;
 }
 
-#ga-hover-popup-host .ga-hover-subtitle {
+.ga-hover-subtitle {
   font-size: 12px;
   opacity: 0.88;
   line-height: 1.3;
 }
 
-#ga-hover-popup-host .ga-hover-close {
+/* ── Close button ───────────────────────────────────────────── */
+.ga-hover-close {
   appearance: none;
   border: 0;
   background: transparent;
@@ -117,29 +91,29 @@
   pointer-events: auto;
 }
 
-#ga-hover-popup-host .ga-hover-close:hover {
-  opacity: 1;
-}
+.ga-hover-close:hover { opacity: 1; }
 
-#ga-hover-popup-host .ga-hover-body {
+/* ── Body ────────────────────────────────────────────────────── */
+.ga-hover-body {
   padding: 14px;
   font-size: 13px;
   line-height: 1.5;
   background: #f0fdf4;
 }
 
-#ga-hover-popup-host .ga-hover-card[data-verdict="SUSPICIOUS"] .ga-hover-body {
+.ga-hover-card[data-verdict="SUSPICIOUS"] .ga-hover-body {
   background: #fffbeb;
   color: #78350f;
 }
 
-#ga-hover-popup-host .ga-hover-card[data-verdict="DANGEROUS"] .ga-hover-body {
+.ga-hover-card[data-verdict="DANGEROUS"] .ga-hover-body {
   background: #fef2f2;
   color: #7f1d1d;
 }
 
-#ga-hover-popup-host .ga-hover-domain-label,
-#ga-hover-popup-host .ga-hover-score-text {
+/* ── Domain / score ──────────────────────────────────────────── */
+.ga-hover-domain-label,
+.ga-hover-score-text {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -147,14 +121,15 @@
   opacity: 0.7;
 }
 
-#ga-hover-popup-host .ga-hover-domain {
+.ga-hover-domain {
   margin-top: 4px;
   font-size: 13px;
   font-weight: 600;
   word-break: break-word;
 }
 
-#ga-hover-popup-host .ga-hover-redirect {
+/* ── Redirect row ───────────────────────────────────────────── */
+.ga-hover-redirect {
   margin-top: 8px;
   padding: 8px 10px;
   border-radius: 8px;
@@ -164,7 +139,8 @@
   line-height: 1.45;
 }
 
-#ga-hover-popup-host .ga-hover-score-row {
+/* ── Risk score bar ──────────────────────────────────────────── */
+.ga-hover-score-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -172,12 +148,12 @@
   gap: 10px;
 }
 
-#ga-hover-popup-host .ga-hover-score-value {
+.ga-hover-score-value {
   font-size: 13px;
   font-weight: 600;
 }
 
-#ga-hover-popup-host .ga-hover-progress {
+.ga-hover-progress {
   width: 100%;
   height: 8px;
   margin-top: 8px;
@@ -186,7 +162,7 @@
   overflow: hidden;
 }
 
-#ga-hover-popup-host .ga-hover-progress-fill {
+.ga-hover-progress-fill {
   width: 100%;
   height: 100%;
   transform-origin: left center;
@@ -196,15 +172,11 @@
   background: #22c55e;
 }
 
-#ga-hover-popup-host .ga-hover-card[data-verdict="SUSPICIOUS"] .ga-hover-progress-fill {
-  background: #f59e0b;
-}
+.ga-hover-card[data-verdict="SUSPICIOUS"] .ga-hover-progress-fill { background: #f59e0b; }
+.ga-hover-card[data-verdict="DANGEROUS"]  .ga-hover-progress-fill { background: #ef4444; }
 
-#ga-hover-popup-host .ga-hover-card[data-verdict="DANGEROUS"] .ga-hover-progress-fill {
-  background: #ef4444;
-}
-
-#ga-hover-popup-host .ga-hover-reasons {
+/* ── Reasons ─────────────────────────────────────────────────── */
+.ga-hover-reasons {
   display: grid;
   gap: 6px;
   margin-top: 12px;
@@ -213,21 +185,18 @@
   padding-right: 4px;
 }
 
-#ga-hover-popup-host .ga-hover-reasons::-webkit-scrollbar {
-  width: 4px;
-}
-
-#ga-hover-popup-host .ga-hover-reasons::-webkit-scrollbar-thumb {
+.ga-hover-reasons::-webkit-scrollbar { width: 4px; }
+.ga-hover-reasons::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.22);
   border-radius: 999px;
 }
 
-#ga-hover-popup-host .ga-hover-reason {
+.ga-hover-reason {
   padding-left: 14px;
   position: relative;
 }
 
-#ga-hover-popup-host .ga-hover-reason::before {
+.ga-hover-reason::before {
   content: '•';
   position: absolute;
   left: 0;
@@ -235,7 +204,8 @@
   font-weight: 700;
 }
 
-#ga-hover-popup-host .ga-hover-actions {
+/* ── Action buttons ──────────────────────────────────────────── */
+.ga-hover-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -243,7 +213,7 @@
   pointer-events: auto;
 }
 
-#ga-hover-popup-host .ga-hover-action {
+.ga-hover-action {
   appearance: none;
   border: 0;
   border-radius: 10px;
@@ -251,29 +221,58 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  pointer-events: auto;
   transition: transform 200ms ease, opacity 200ms ease, background 200ms ease;
 }
 
-#ga-hover-popup-host .ga-hover-action:hover {
-  transform: translateY(-2px);
+.ga-hover-action:hover  { transform: translateY(-2px); }
+.ga-hover-action:active { transform: translateY(0); opacity: 0.8; }
+
+.ga-hover-action-primary   { background: #16a34a; color: #f0fdf4; }
+.ga-hover-action-secondary { background: rgba(15, 23, 42, 0.08); color: inherit; }
+.ga-hover-action-danger    { background: #dc2626; color: #fff; }
+
+/* ── Alternative link suggestions ─────────────────────────────── */
+.ga-hover-alternatives {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.22);
+  border-radius: 8px;
+  pointer-events: auto;
 }
 
-#ga-hover-popup-host .ga-hover-action-primary {
-  background: #16a34a;
-  color: #f0fdf4;
+.ga-hover-alt-title {
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 6px;
 }
 
-#ga-hover-popup-host .ga-hover-action-secondary {
-  background: rgba(15, 23, 42, 0.08);
-  color: inherit;
+.ga-hover-alt-link {
+  display: inline-block;
+  margin-right: 6px;
+  margin-bottom: 4px;
+  padding: 4px 8px;
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+  text-decoration: none;
+  border-radius: 6px;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 120ms ease;
 }
 
-#ga-hover-popup-host .ga-hover-action-danger {
-  background: #dc2626;
-  color: #fff;
+.ga-hover-alt-link:hover {
+  background: rgba(34, 197, 94, 0.22);
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #15803d;
 }
 
-#ga-hover-popup-host .ga-hover-footer {
+/* ── Footer ──────────────────────────────────────────────────── */
+.ga-hover-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -283,24 +282,23 @@
   opacity: 0.72;
 }
 
-#ga-hover-popup-host .ga-hover-offline {
-  font-weight: 600;
-}
+.ga-hover-offline { font-weight: 600; }
 
-#ga-hover-popup-host .ga-hover-loading {
+/* ── Loading skeleton ────────────────────────────────────────── */
+.ga-hover-loading {
   display: grid;
   gap: 10px;
   padding: 4px 0 2px;
 }
 
-#ga-hover-popup-host .ga-skeleton {
+.ga-skeleton {
   position: relative;
   overflow: hidden;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.07);
 }
 
-#ga-hover-popup-host .ga-skeleton::after {
+.ga-skeleton::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -309,69 +307,48 @@
   animation: ga-shimmer 1.1s infinite;
 }
 
-#ga-hover-popup-host .ga-skeleton-line {
-  height: 12px;
-}
-
-#ga-hover-popup-host .ga-skeleton-short {
-  width: 72%;
-}
-
-#ga-hover-popup-host .ga-skeleton-progress {
-  height: 8px;
-  width: 100%;
-}
+.ga-skeleton-line     { height: 12px; }
+.ga-skeleton-short    { width: 72%; }
+.ga-skeleton-progress { height: 8px; width: 100%; }
 
 @keyframes ga-shimmer {
-  100% {
-    transform: translateX(100%);
-  }
+  100% { transform: translateX(100%); }
 }
 
+/* ── Dark mode ───────────────────────────────────────────────── */
 @media (prefers-color-scheme: dark) {
-  #ga-hover-popup-host {
-    color: #d1fae5;
-  }
+  .ga-hover-popup { color: #d1fae5; }
 
-  #ga-hover-popup-host .ga-hover-card {
+  .ga-hover-card {
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.36);
   }
 
-  #ga-hover-popup-host .ga-hover-card[data-verdict="SAFE"] {
+  .ga-hover-card[data-verdict="SAFE"] {
     background: #052e16;
     border-color: #4ade80;
   }
 
-  #ga-hover-popup-host .ga-hover-card[data-verdict="SUSPICIOUS"] {
+  .ga-hover-card[data-verdict="SUSPICIOUS"] {
     background: #451a03;
     border-color: #fbbf24;
   }
 
-  #ga-hover-popup-host .ga-hover-card[data-verdict="DANGEROUS"] {
+  .ga-hover-card[data-verdict="DANGEROUS"] {
     background: #450a0a;
     border-color: #f87171;
   }
 
-  #ga-hover-popup-host .ga-hover-body {
-    background: inherit;
-    color: inherit;
-  }
+  .ga-hover-body        { background: inherit; color: inherit; }
+  .ga-hover-progress    { background: rgba(255, 255, 255, 0.12); }
 
-  #ga-hover-popup-host .ga-hover-progress {
-    background: rgba(255, 255, 255, 0.12);
-  }
-
-  #ga-hover-popup-host .ga-hover-redirect {
+  .ga-hover-redirect {
     background: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.12);
   }
 
-  #ga-hover-popup-host .ga-hover-action-secondary {
-    background: rgba(255, 255, 255, 0.12);
-    color: inherit;
-  }
+  .ga-hover-action-secondary { background: rgba(255, 255, 255, 0.12); color: inherit; }
 
-  #ga-hover-popup-host .ga-skeleton {
+  .ga-skeleton {
     background: rgba(255, 255, 255, 0.12);
   }
 }
