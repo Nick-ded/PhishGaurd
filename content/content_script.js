@@ -665,6 +665,42 @@
     }
   }
 
+  function createGoogleSerpBadge(result) {
+    const verdict = result.verdict || 'SAFE';
+    const tier = getVerdictTier(verdict);
+    const score = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+    const chips = getTooltipChips(result.flags || []).slice(0, 3);
+    const badgeLabel = getVerdictBadgeText(verdict);
+
+    const wrap = document.createElement('span');
+    wrap.className = 'pg-link-badge-wrap';
+
+    const badge = document.createElement('span');
+    badge.className = `pg-badge pg-${tier}`;
+    badge.innerHTML = `${getVerdictIconSvg(tier)}<span>${escHtml(badgeLabel)}</span><span>·</span><span>${score}</span>`;
+
+    const tooltip = document.createElement('span');
+    tooltip.className = 'pg-badge-tooltip';
+    tooltip.setAttribute('role', 'tooltip');
+    tooltip.setAttribute('aria-hidden', 'true');
+    tooltip.innerHTML = `
+      <span class="pg-badge-tooltip-line1">
+        <span class="pg-badge pg-${tier}">${getVerdictIconSvg(tier)}<span>${escHtml(badgeLabel)}</span></span>
+        <span class="pg-badge-tooltip-score">Score ${score}/100</span>
+      </span>
+      <div class="pg-badge-tooltip-domain">${escHtml(result.domain || '')}</div>
+      <div class="pg-badge-tooltip-chips">
+        ${chips.length
+          ? chips.map((chip) => `<span class="pg-badge-chip">${escHtml(chip)}</span>`).join('')
+          : '<span class="pg-badge-chip pg-badge-chip-muted">No major threats found</span>'}
+      </div>
+    `;
+
+    wrap.appendChild(badge);
+    wrap.appendChild(tooltip);
+    return wrap;
+  }
+
   async function scanGoogleSerpContainer(container, serpCounts) {
     if (!container) return;
 
@@ -680,13 +716,60 @@
     else if (result.verdict === 'SUSPICIOUS') serpCounts.suspiciousCount++;
   }
 
+  function isGoogleSerpTitleLink(anchor) {
+    if (!anchor || anchor.closest('[data-ved]') === null) return false;
+    if (anchor.closest('g-scrolling-carousel') !== null) return false;
+    if (anchor.closest('[role="navigation"]') !== null) return false;
+    if (anchor.closest('g-inner-card') !== null) return false;
+    if (anchor.closest('.ULSxyf') !== null) return false;
+    if (anchor.offsetParent === null) return false;
+
+    const href = String(anchor.getAttribute('href') || anchor.href || '');
+    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return false;
+
+    return true;
+  }
+
+  async function scanGoogleSerpTitleLink(anchor) {
+    if (!anchor || anchor.dataset.pgScanned === 'true') return null;
+    if (!isGoogleSerpTitleLink(anchor)) return null;
+
+    anchor.dataset.pgScanned = 'true';
+
+    const urlString = getLinkUrl(anchor);
+    if (!urlString) return null;
+
+    const result = await scanHoverUrl(urlString);
+    if (!result) return null;
+
+    const h3 = anchor.closest('h3') || anchor.parentElement;
+    if (!h3) return result;
+
+    const container = anchor.closest('div.g, div[data-sokoban-grid]');
+    if (container) {
+      applyGoogleSerpVerdict(container, urlString, result);
+    }
+
+    const badgeEl = createGoogleSerpBadge({
+      ...result,
+      domain: getDisplayDomain(urlString)
+    });
+
+    h3.insertAdjacentElement('afterend', badgeEl);
+    return result;
+  }
+
   async function scanGoogleSerpPage() {
     if (!GOOGLE_SERP_RE.test(location.href)) return;
 
     const requestId = ++serpState.requestId;
     const serpCounts = { dangerCount: 0, suspiciousCount: 0 };
-    const containers = Array.from(document.querySelectorAll('div.g, div[data-sokoban-grid]'));
-    const items = containers.filter((container) => extractGoogleSerpUrl(container));
+    const titleLinks = document.querySelectorAll(
+      'div#search div.g a[jsname], ' +
+      'div#search h3 > a, ' +
+      'div[data-sokoban-grid] h3 > a'
+    );
+    const items = Array.from(titleLinks).filter((anchor) => isGoogleSerpTitleLink(anchor));
 
     let index = 0;
     let active = 0;
@@ -700,10 +783,14 @@
       }
 
       while (active < 10 && index < items.length) {
-        const container = items[index++];
+        const anchor = items[index++];
         active++;
 
-        Promise.resolve(scanGoogleSerpContainer(container, serpCounts))
+        Promise.resolve(scanGoogleSerpTitleLink(anchor).then((result) => {
+          if (!result) return;
+          if (result.verdict === 'DANGEROUS') serpCounts.dangerCount++;
+          else if (result.verdict === 'SUSPICIOUS') serpCounts.suspiciousCount++;
+        }))
           .catch(() => {})
           .finally(() => {
             active--;
@@ -1267,6 +1354,8 @@
   }
 
   function scanAndDecorateLinks() {
+    if (GOOGLE_SERP_RE.test(location.href)) return;
+
     document.querySelectorAll('a[href]').forEach((link) => {
       attachLinkHover(link);
       decorateLink(link);
