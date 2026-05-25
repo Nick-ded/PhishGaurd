@@ -310,6 +310,25 @@
     return parsed ? parsed.href : '';
   }
 
+  // Known piracy tokens for quick inline badge detection (mirrors detector.js)
+  const PIRACY_TOKENS_CONTENT = [
+    'pagalworld', 'djpunjab', 'mr-jatt', 'mrjatt', 'songspk', 'downloadming',
+    'wapking', 'mp3mad', 'mp3skull', 'freshmaza', 'beemp3',
+    'movierulz', 'filmyzilla', 'bollyflix', 'vegamovies', 'tamilrockers',
+    'kuttymovies', 'tamilyogi', 'moviesda', 'downloadhub', 'worldfree',
+    'mp4moviez', 'afilmywap', 'rdxhd', 'skymovies', 'fmovies', 'gomovies',
+    '123movies', 'putlocker', 'soap2day', 'solarmovie', 'primewire',
+    'couchtuner', 'watchseries', 'streamlord', 'lookmovie', 'netmirror',
+    'iosmirror', 'piratebay', 'kickasstorrent', 'rarbg', 'jiorockers',
+    'isaimini', 'fitgirl', 'skidrow', 'crackwatch', 'steamunlock'
+  ];
+
+  // Check if the current page itself is a piracy/bad site
+  function isCurrentPageBad() {
+    const pageHost = location.hostname.toLowerCase();
+    return PIRACY_TOKENS_CONTENT.some(t => pageHost.includes(t));
+  }
+
   function quickURLScan(urlString) {
     const parsed = ensureUrl(urlString);
     if (!parsed) {
@@ -324,6 +343,20 @@
 
     const hostname = parsed.hostname.toLowerCase();
     const baseDomain = getBaseDomain(hostname);
+
+    // If this link is on the same domain as the current page,
+    // and the current page is a known piracy/bad site — inherit that verdict
+    const pageHost = location.hostname.toLowerCase();
+    const pageBase = getBaseDomain(pageHost);
+    if (baseDomain === pageBase && isCurrentPageBad()) {
+      return {
+        verdict: 'DANGEROUS',
+        score: 100,
+        flags: ['Link on known piracy/malicious site'],
+        url: parsed.href,
+        offlineMode: true
+      };
+    }
 
     if (TRUSTED_DOMAINS.has(baseDomain)) {
       return {

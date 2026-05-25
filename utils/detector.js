@@ -136,6 +136,10 @@ const PhishGuardDetector = (() => {
     'primewire', 'couchtuner', 'watchseries', 'streamlord',
     'lookmovie', 'netmirror', 'iosmirror', 'tamilrockers',
     'piratebay', 'kickasstorrent', 'rarbg',
+    // Music piracy
+    'pagalworld', 'djpunjab', 'mr-jatt', 'mrjatt', 'songspk',
+    'downloadming', 'wapking', 'raagsong', 'freshmaza',
+    'mp3mad', 'mp3skull', 'mp3juices', 'beemp3',
     // Generic piracy patterns
     'freemovie', 'hdmovie', 'fullmovie', 'moviedownload',
     'torrentmovie', 'piracymovie',
