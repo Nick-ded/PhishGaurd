@@ -172,7 +172,10 @@ const KNOWN_BAD_DOMAINS_POPUP = new Set([
   'mr-jatt.com', 'mrjatt.net', 'songspk.com', 'downloadming.com',
   'wapking.com', 'freshmaza.com', 'mp3mad.com',
   'raagsong.com', 'mp3skull.com', 'beemp3.com', 'songs.pk',
-  // Phishing
+  // Piracy repack / game crack sites
+  'fitgirl-repacks.site', 'igg-games.com', 'ocean-of-games.com',
+  'oceanofgames.com', 'oceansofgames.com', 'oceansofgamess.com',
+  'steamunlocked.net', 'skidrowreloaded.com',
   'paytm-kyc.com', 'paytm-verify.com', 'sbi-netbanking.xyz',
   'hdfc-kyc.xyz', 'icici-verify.xyz', 'amazon-offer.xyz',
   'jio-offer.com', 'irctc-refund.com', 'uidai-update.com'

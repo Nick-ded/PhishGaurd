@@ -314,6 +314,7 @@
   const PIRACY_TOKENS_CONTENT = [
     'pagalworld', 'pagalnew', 'djpunjab', 'mr-jatt', 'mrjatt', 'songspk', 'downloadming',
     'wapking', 'mp3mad', 'mp3skull', 'freshmaza', 'beemp3', 'raagsong',
+    'oceanofgame', 'oceansofgame', 'igg-game', 'igggame', 'steamunlocked', 'skidrowreloaded',
     'movierulz', 'filmyzilla', 'bollyflix', 'vegamovies', 'tamilrockers',
     'kuttymovies', 'tamilyogi', 'moviesda', 'downloadhub', 'worldfree',
     'mp4moviez', 'afilmywap', 'rdxhd', 'skymovies', 'fmovies', 'gomovies',
@@ -779,7 +780,14 @@
     'pagalworld.is':    { verdict: 'DANGEROUS', score: 100, flags: ['Known music piracy site — illegal MP3 downloads'] },
     'pagalworld.com':   { verdict: 'DANGEROUS', score: 100, flags: ['Known music piracy site — illegal MP3 downloads'] },
     'pagalnew.com':     { verdict: 'DANGEROUS', score: 100, flags: ['Known music piracy site — illegal MP3 downloads', 'Distributes copyrighted songs without license'] },
-    'fitgirl-repacks.site': { verdict: 'SUSPICIOUS', score: 40, flags: ['Suspicious TLD (.site)', 'Distributes pirated game repacks', 'Unofficial software distribution'] }
+    'fitgirl-repacks.site': { verdict: 'SUSPICIOUS', score: 40, flags: ['Suspicious TLD (.site)', 'Distributes pirated game repacks', 'Unofficial software distribution'] },
+    'oceanofgames.com':     { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy site — distributes cracked/pirated PC games', 'Malware risk from unofficial game downloads'] },
+    'oceansofgames.com':    { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy site — distributes cracked/pirated PC games'] },
+    'oceansofgamess.com':   { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy site — distributes cracked/pirated PC games'] },
+    'ocean-of-games.com':   { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy site — distributes cracked/pirated PC games'] },
+    'igg-games.com':        { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy site — distributes cracked/pirated PC games', 'Malware risk'] },
+    'steamunlocked.net':    { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy site — distributes cracked Steam games'] },
+    'skidrowreloaded.com':  { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy site — cracked game releases'] }
   };
 
   function getDemoData(urlString) {

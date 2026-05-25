@@ -167,6 +167,8 @@ const PhishGuardDetector = (() => {
     // Piracy repack / cracked game sites
     'fitgirl-repacks.site', 'fitgirl-repacks.ru',
     'dodi-repacks.site', 'igg-games.com', 'ocean-of-games.com',
+    'oceanofgames.com', 'oceansofgames.com', 'oceansofgamess.com',
+    'oceanofgame.com', 'ocean-of-game.com',
     'steamunlocked.net', 'skidrowreloaded.com', 'crackwatch.com',
     // Known phishing / scam domains
     'paytm-kyc.com', 'paytm-verify.com',
