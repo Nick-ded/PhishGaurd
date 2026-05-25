@@ -8,6 +8,7 @@ importScripts('../utils/detector.js');
 // ── In-memory cache for scan results ────────────────────────
 const verdictCache = new Map();
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const MAX_CACHE_ENTRIES = 200;
 
 // ── Extension icon states ─────────────────────────────────────
 const BADGE_CONFIG = {
@@ -24,18 +25,44 @@ let stats = {
   safe: 0,
   suspicious: 0,
   dangerous: 0,
-  blockedClicks: 0
+  blockedClicks: 0,
+  hindi: 0
 };
 
 // Load persisted stats on startup
-chrome.storage.local.get(['phishguard_stats'], (result) => {
-  if (result.phishguard_stats) {
-    stats = result.phishguard_stats;
+chrome.storage.session.get(['phishguard_stats'], (sessionResult) => {
+  if (sessionResult.phishguard_stats) {
+    stats = sessionResult.phishguard_stats;
+    return;
   }
+
+  chrome.storage.local.get(['phishguard_stats'], (result) => {
+    if (result.phishguard_stats) {
+      stats = result.phishguard_stats;
+      chrome.storage.session.set({ phishguard_stats: stats });
+    }
+  });
 });
 
 function saveStats() {
   chrome.storage.local.set({ phishguard_stats: stats });
+  chrome.storage.session.set({ phishguard_stats: stats });
+}
+
+function rememberCache(urlString, result) {
+  if (!urlString || !result) return;
+
+  if (verdictCache.has(urlString)) {
+    verdictCache.delete(urlString);
+  }
+
+  verdictCache.set(urlString, { result, timestamp: Date.now() });
+
+  while (verdictCache.size > MAX_CACHE_ENTRIES) {
+    const oldestKey = verdictCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    verdictCache.delete(oldestKey);
+  }
 }
 
 // ── Badge update helper ────────────────────────────────────────
@@ -75,7 +102,7 @@ async function scanURL(urlString, tabId) {
       url: urlString,
       timestamp: Date.now()
     };
-    verdictCache.set(urlString, { result, timestamp: Date.now() });
+    rememberCache(urlString, result);
     if (tabId) updateBadge(tabId, 'SAFE');
     updateStats('SAFE');
     return result;
@@ -102,7 +129,7 @@ async function fullScan(urlString, pageData, tabId) {
       url: urlString,
       timestamp: Date.now()
     };
-    verdictCache.set(urlString, { result, timestamp: Date.now() });
+    rememberCache(urlString, result);
     if (tabId) updateBadge(tabId, 'SAFE');
     updateStats('SAFE');
     return result;
@@ -125,8 +152,12 @@ async function fullScan(urlString, pageData, tabId) {
     timestamp: Date.now()
   };
 
+  if (pageAnalysis.flags.some(flag => /hindi|hinglish/i.test(flag))) {
+    stats.hindi++;
+  }
+
   // Cache the result
-  verdictCache.set(urlString, { result, timestamp: Date.now() });
+  rememberCache(urlString, result);
 
   // Update badge
   if (tabId) updateBadge(tabId, verdict);
@@ -165,8 +196,59 @@ async function scanHoverLink(urlString) {
     pageScore: 0,
     flags: urlAnalysis.flags.map(f => ({ type: 'url', text: f })),
     url: urlString,
-    quickScan: true
+    quickScan: true,
+    offlineMode: true
   };
+}
+
+async function resolveRedirectUrl(urlString) {
+  if (!urlString) {
+    return { original: urlString, final_url: 'Could not resolve', verdict: 'SUSPICIOUS' };
+  }
+
+  try {
+    const firstAttempt = await fetch(urlString, {
+      method: 'HEAD',
+      redirect: 'follow',
+      cache: 'no-store'
+    });
+
+    const finalUrl = String(firstAttempt.url || urlString);
+    const finalAnalysis = PhishGuardDetector.analyzeURL(finalUrl);
+    const verdict = finalAnalysis.trusted ? 'SAFE' :
+      finalAnalysis.score >= 60 ? 'DANGEROUS' :
+      finalAnalysis.score >= 30 ? 'SUSPICIOUS' : 'SAFE';
+
+    return {
+      original: urlString,
+      final_url: finalUrl,
+      verdict,
+      flags: finalAnalysis.flags
+    };
+  } catch {
+    try {
+      const secondAttempt = await fetch(urlString, {
+        method: 'GET',
+        redirect: 'follow',
+        cache: 'no-store'
+      });
+
+      const finalUrl = String(secondAttempt.url || urlString);
+      const finalAnalysis = PhishGuardDetector.analyzeURL(finalUrl);
+      const verdict = finalAnalysis.trusted ? 'SAFE' :
+        finalAnalysis.score >= 60 ? 'DANGEROUS' :
+        finalAnalysis.score >= 30 ? 'SUSPICIOUS' : 'SAFE';
+
+      return {
+        original: urlString,
+        final_url: finalUrl,
+        verdict,
+        flags: finalAnalysis.flags
+      };
+    } catch {
+      return { original: urlString, final_url: 'Could not resolve', verdict: 'SUSPICIOUS' };
+    }
+  }
 }
 
 // ── Message handler ────────────────────────────────────────────
@@ -193,6 +275,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'HOVER_LINK') {
     scanHoverLink(message.url).then(result => {
+      sendResponse({ result });
+    });
+    return true;
+  }
+
+  if (message.type === 'RESOLVE_REDIRECT') {
+    resolveRedirectUrl(message.url).then(result => {
       sendResponse({ result });
     });
     return true;

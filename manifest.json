@@ -42,7 +42,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["content/warning_overlay.html"],
+      "resources": ["content/warning_overlay.html", "content/hover-popup.css"],
       "matches": ["<all_urls>"]
     }
   ]

@@ -1,3 +1,249 @@
+<!-- GuardianAI - popup.html
+     Modified: Rebuilt the extension popup as a dashboard with current-page verdict, session stats, link intelligence, ads, and quick actions.
+     New additions: Current page status card, session stats section, links list, redirect preview card, ads section, and dashboard-mode support.
+     Unchanged: Scan input and settings toggles remain available for existing workflows.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GuardianAI</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="pg-app">
+    <header class="pg-header">
+      <div class="pg-brand">
+        <div class="pg-brand-mark">🛡️</div>
+        <div class="pg-brand-copy">
+          <div class="pg-brand-title">GuardianAI</div>
+          <div class="pg-brand-subtitle">Protecting India's Internet</div>
+        </div>
+      </div>
+
+      <div class="pg-header-actions">
+        <div class="pg-status-pill" id="extensionStatusPill" title="Extension status">
+          <span class="pg-status-dot" id="extensionStatusDot"></span>
+          <span id="extensionStatusText">Active</span>
+        </div>
+        <button class="pg-icon-btn" id="settingsBtn" type="button" title="Settings">⚙️</button>
+      </div>
+    </header>
+
+    <main class="pg-main">
+      <section class="pg-card pg-current-card" id="currentPageCard">
+        <div class="pg-section-head">
+          <div>
+            <div class="pg-section-title">Current Page</div>
+            <div class="pg-section-subtitle">Live verdict for the active tab</div>
+          </div>
+          <span class="pg-offline-pill" id="offlinePill" hidden>Offline mode</span>
+        </div>
+
+        <div class="pg-loading-state" id="currentPageLoading">
+          <div class="pg-skeleton pg-skeleton-line"></div>
+          <div class="pg-skeleton pg-skeleton-line pg-skeleton-short"></div>
+          <div class="pg-skeleton pg-skeleton-block"></div>
+        </div>
+
+        <div class="pg-current-content" id="currentPageContent" hidden>
+          <div class="pg-verdict-banner" id="currentPageVerdictBanner">
+            <span class="pg-verdict-icon" id="currentPageVerdictIcon">🔄</span>
+            <span class="pg-verdict-label" id="currentPageVerdictLabel">Scanning...</span>
+            <span class="pg-verdict-score" id="currentPageVerdictScore">0/100</span>
+          </div>
+          <div class="pg-current-domain" id="currentPageDomain"></div>
+          <div class="pg-current-reasons" id="currentPageReasons"></div>
+          <div class="pg-current-actions">
+            <button class="pg-action-btn pg-action-btn-danger" id="currentBlockBtn" type="button">Block This Page</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="pg-card pg-session-card">
+        <div class="pg-section-head">
+          <div>
+            <div class="pg-section-title">This Session</div>
+            <div class="pg-section-subtitle">Counts stored in chrome.storage.session</div>
+          </div>
+        </div>
+
+        <div class="pg-stats-row">
+          <div class="pg-stat-card">
+            <div class="pg-stat-value" id="statScanned">0</div>
+            <div class="pg-stat-label">Scanned</div>
+          </div>
+          <div class="pg-stat-card">
+            <div class="pg-stat-value" id="statBlocked">0</div>
+            <div class="pg-stat-label">Blocked</div>
+          </div>
+          <div class="pg-stat-card">
+            <div class="pg-stat-value" id="statHindi">0</div>
+            <div class="pg-stat-label">Hindi</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pg-card pg-links-card">
+        <div class="pg-section-head">
+          <div>
+            <div class="pg-section-title">Links on This Page</div>
+            <div class="pg-section-subtitle">Color-coded results and redirect previews</div>
+          </div>
+          <button class="pg-secondary-btn" id="scanAllBtn" type="button">Scan All</button>
+        </div>
+
+        <div class="pg-link-list" id="pageLinksList">
+          <div class="pg-empty-state">Loading links...</div>
+        </div>
+      </section>
+
+      <section class="pg-card pg-redirect-card" id="redirectPreviewCard" hidden>
+        <div class="pg-section-head">
+          <div>
+            <div class="pg-section-title">Redirect Preview</div>
+            <div class="pg-section-subtitle">Safe preview before you click</div>
+          </div>
+          <button class="pg-text-btn" id="redirectPreviewClose" type="button">[X]</button>
+        </div>
+
+        <div class="pg-redirect-body">
+          <div class="pg-redirect-line">
+            <span class="pg-redirect-label">Original</span>
+            <span class="pg-redirect-value" id="redirectOriginal"></span>
+          </div>
+          <div class="pg-redirect-arrow">↓ Redirects to ↓</div>
+          <div class="pg-redirect-line">
+            <span class="pg-redirect-label">Destination</span>
+            <span class="pg-redirect-value" id="redirectFinal"></span>
+          </div>
+          <div class="pg-redirect-verdict" id="redirectVerdict"></div>
+          <div class="pg-redirect-actions">
+            <button class="pg-action-btn pg-action-btn-secondary" id="redirectPreviewOpen" type="button">Open Destination</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="pg-card pg-ads-card" id="adsSection">
+        <div class="pg-section-head">
+          <div>
+            <div class="pg-section-title">Ads & Trackers Detected</div>
+            <div class="pg-section-subtitle">Labels only - nothing is removed from the page</div>
+          </div>
+          <button class="pg-text-btn" id="adsHideBtn" type="button">[Hide]</button>
+        </div>
+
+        <div class="pg-ads-grid">
+          <div class="pg-mini-card">
+            <div class="pg-mini-value" id="adScriptsCount">0</div>
+            <div class="pg-mini-label">Ad scripts</div>
+          </div>
+          <div class="pg-mini-card">
+            <div class="pg-mini-value" id="adPixelsCount">0</div>
+            <div class="pg-mini-label">Tracking pixels</div>
+          </div>
+          <div class="pg-mini-card">
+            <div class="pg-mini-value" id="adRedirectCount">0</div>
+            <div class="pg-mini-label">Redirect ads</div>
+          </div>
+        </div>
+
+        <button class="pg-action-btn pg-action-btn-secondary pg-block-ads-btn" id="blockAdsBtn" type="button">Block All Ads on Page</button>
+      </section>
+
+      <section class="pg-card pg-actions-card">
+        <div class="pg-section-head">
+          <div>
+            <div class="pg-section-title">Quick Actions</div>
+            <div class="pg-section-subtitle">Report, copy, settings, and dashboard</div>
+          </div>
+        </div>
+
+        <div class="pg-action-grid">
+          <button class="pg-action-btn pg-action-btn-danger" id="reportPageBtn" type="button">🚨 Report Page</button>
+          <button class="pg-action-btn pg-action-btn-secondary" id="copyReportBtn" type="button">📋 Copy Report</button>
+          <button class="pg-action-btn pg-action-btn-secondary" id="settingsActionBtn" type="button">⚙️ Settings</button>
+          <button class="pg-action-btn pg-action-btn-secondary" id="dashboardBtn" type="button">📊 Dashboard</button>
+        </div>
+      </section>
+
+      <section class="pg-card pg-scan-card">
+        <div class="pg-section-head">
+          <div>
+            <div class="pg-section-title">Check Any URL</div>
+            <div class="pg-section-subtitle">Keeps the existing inline scanner</div>
+          </div>
+        </div>
+
+        <div class="pg-scan-input-row">
+          <input type="url" id="urlInput" class="pg-url-input" placeholder="https://example.com" />
+          <button id="scanBtn" class="pg-scan-btn" type="button">Scan</button>
+        </div>
+        <div class="pg-inline-result" id="inlineResult"></div>
+      </section>
+
+      <section class="pg-card pg-settings-panel" id="settingsPanel" hidden>
+        <div class="pg-section-head">
+          <div>
+            <div class="pg-section-title">Settings</div>
+            <div class="pg-section-subtitle">Keep your existing toggle preferences</div>
+          </div>
+          <button class="pg-text-btn" id="settingsClose" type="button">[X]</button>
+        </div>
+
+        <div class="pg-setting-row">
+          <div class="pg-setting-info">
+            <div class="pg-setting-name">Hover link scanning</div>
+            <div class="pg-setting-desc">Show tooltip on link hover</div>
+          </div>
+          <label class="pg-toggle">
+            <input type="checkbox" id="toggleHover" checked />
+            <span class="pg-toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="pg-setting-row">
+          <div class="pg-setting-info">
+            <div class="pg-setting-name">Dangerous page overlay</div>
+            <div class="pg-setting-desc">Block dangerous pages with warning</div>
+          </div>
+          <label class="pg-toggle">
+            <input type="checkbox" id="toggleOverlay" checked />
+            <span class="pg-toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="pg-setting-row">
+          <div class="pg-setting-info">
+            <div class="pg-setting-name">India-language detection</div>
+            <div class="pg-setting-desc">Hindi and Hinglish scam patterns</div>
+          </div>
+          <label class="pg-toggle">
+            <input type="checkbox" id="toggleHindi" checked />
+            <span class="pg-toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="pg-setting-row">
+          <div class="pg-setting-info">
+            <div class="pg-setting-name">Strict mode</div>
+            <div class="pg-setting-desc">Lower threshold for suspicious pages</div>
+          </div>
+          <label class="pg-toggle">
+            <input type="checkbox" id="toggleStrict" />
+            <span class="pg-toggle-slider"></span>
+          </label>
+        </div>
+
+        <button class="pg-settings-close" id="settingsDone" type="button">Done</button>
+      </section>
+    </main>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
 <!DOCTYPE html>
 <html lang="en">
 <head>

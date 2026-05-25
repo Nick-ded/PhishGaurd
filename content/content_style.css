@@ -328,3 +328,54 @@
   from { opacity: 0; transform: translateY(12px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* ── Link badges ───────────────────────────────────────────── */
+.ga-link-badge-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.ga-link-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  border: 1px solid transparent;
+  cursor: default;
+  user-select: none;
+}
+
+.ga-link-badge-ad {
+  background: rgba(249, 115, 22, 0.16);
+  color: #f97316;
+  border-color: rgba(249, 115, 22, 0.22);
+}
+
+.ga-link-badge-redirect {
+  background: rgba(59, 130, 246, 0.16);
+  color: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.22);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.ga-link-badge-danger {
+  background: rgba(239, 68, 68, 0.16);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.22);
+}
+
+.ga-redirect-preview-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

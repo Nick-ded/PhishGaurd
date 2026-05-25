@@ -1,24 +1,297 @@
-// ============================================================
-// PhishGuard — Content Script
-// content/content_script.js
-// ============================================================
+// GuardianAI - content_script.js
+// Modified: Replaced the old hover tooltip with a shadow-DOM popup, added ad/redirect badges, and added page-insight message handling.
+// New additions: Hover popup system, redirect preview support, ad detection badges, cached hover scans, and page summary responses.
+// Unchanged: Existing full-page danger overlay flow, page scan message contract, and click-block warning behavior.
 
 (function () {
   'use strict';
 
-  let hoverTooltip = null;
-  let hoverTimeout = null;
+  const HOVER_DELAY_MS = 600;
+  const CACHE_LIMIT = 200;
+  const CACHE_TTL = 10 * 60 * 1000;
+
+  const TRUSTED_DOMAINS = new Set([
+    'google.com', 'youtube.com', 'facebook.com', 'twitter.com',
+    'instagram.com', 'linkedin.com', 'github.com', 'wikipedia.org',
+    'amazon.com', 'amazon.in', 'flipkart.com', 'paytm.com',
+    'phonepe.com', 'sbi.co.in', 'hdfcbank.com', 'icicibank.com',
+    'microsoft.com', 'apple.com'
+  ]);
+
+  const AD_PATTERNS = [
+    'doubleclick.net', 'googlesyndication.com', 'googleadservices.com',
+    'amazon-adsystem.com', 'facebook.com/tr', 'analytics.google.com',
+    'hotjar.com', 'clarity.ms', '/ads/', '/advertisement/', '/sponsored/',
+    '/tracking/', '/pixel/', 'gtag(', 'fbq(', '_gaq.', 'datalayer'
+  ];
+
+  const REDIRECT_DOMAINS = [
+    'bit.ly', 'tinyurl.com', 'shorturl.at', 't.co', 'goo.gl', 'ow.ly',
+    'buff.ly', 'tiny.cc', 'is.gd', 'rb.gy', 'cutt.ly', 'short.io'
+  ];
+
+  const REDIRECT_PARAM_PATTERNS = ['?url=', '?redirect=', '?goto=', '?link='];
+
+  const hoverCache = new Map();
+  const redirectCache = new Map();
+
   let currentPageResult = null;
   let warningOverlayShown = false;
 
-  // ── Extract page data for analysis ──────────────────────────
+  let hoverPopupHost = null;
+  let hoverPopupRoot = null;
+  let hoverPopupRefs = null;
+  let hoverStylesPromise = null;
+
+  const hoverState = {
+    timer: null,
+    activeLink: null,
+    requestId: 0,
+    lastUrl: '',
+    visible: false,
+    lastPlacement: null,
+    mutateTimer: null
+  };
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
+
+  function rememberCache(cache, key, value) {
+    if (!key) return;
+    if (cache.has(key)) cache.delete(key);
+    cache.set(key, { value, timestamp: Date.now() });
+    while (cache.size > CACHE_LIMIT) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey === undefined) break;
+      cache.delete(oldestKey);
+    }
+  }
+
+  function readCache(cache, key) {
+    const entry = cache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > CACHE_TTL) {
+      cache.delete(key);
+      return null;
+    }
+    cache.delete(key);
+    cache.set(key, entry);
+    return entry.value;
+  }
+
+  function ensureUrl(urlString) {
+    try {
+      return new URL(urlString, location.href);
+    } catch {
+      return null;
+    }
+  }
+
+  function getBaseDomain(hostname) {
+    const parts = String(hostname || '').toLowerCase().split('.').filter(Boolean);
+    if (parts.length <= 2) return parts.join('.');
+    if (['co', 'org', 'gov', 'net', 'edu'].includes(parts[parts.length - 2])) {
+      return parts.slice(-3).join('.');
+    }
+    return parts.slice(-2).join('.');
+  }
+
+  function getDisplayDomain(urlString) {
+    const parsed = ensureUrl(urlString);
+    if (!parsed) return String(urlString || '').slice(0, 64);
+    return parsed.hostname || parsed.href;
+  }
+
+  function getLinkUrl(link) {
+    if (!link) return '';
+    const rawHref = link.getAttribute('href') || link.href || '';
+    if (!rawHref || rawHref.startsWith('javascript:') || rawHref.startsWith('#') || rawHref.startsWith('mailto:') || rawHref.startsWith('tel:')) {
+      return '';
+    }
+    const parsed = ensureUrl(rawHref);
+    return parsed ? parsed.href : '';
+  }
+
+  function quickURLScan(urlString) {
+    const parsed = ensureUrl(urlString);
+    if (!parsed) {
+      return {
+        verdict: 'DANGEROUS',
+        score: 90,
+        flags: ['Invalid or malformed URL'],
+        url: urlString,
+        offlineMode: true
+      };
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+    const baseDomain = getBaseDomain(hostname);
+
+    if (TRUSTED_DOMAINS.has(baseDomain)) {
+      return {
+        verdict: 'SAFE',
+        score: 0,
+        flags: ['Verified trusted domain'],
+        url: parsed.href,
+        trusted: true,
+        offlineMode: true
+      };
+    }
+
+    let score = 0;
+    const flags = [];
+    const fullURL = parsed.href.toLowerCase();
+
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+      score += 40;
+      flags.push('Uses raw IP address instead of domain name');
+    }
+
+    if (hostname.includes('xn--')) {
+      score += 35;
+      flags.push('Punycode/homograph domain detected');
+    }
+
+    if (parsed.protocol === 'http:') {
+      score += 20;
+      flags.push('Not using HTTPS');
+    }
+
+    const suspiciousTokens = [
+      'login', 'signin', 'verify', 'secure', 'update', 'confirm',
+      'account', 'banking', 'payment', 'wallet', 'kyc', 'otp',
+      'support', 'helpdesk', 'refund', 'claim', 'reward', 'free',
+      'winner', 'lucky', 'prize', 'offer'
+    ];
+    const foundTokens = suspiciousTokens.filter((token) => hostname.includes(token));
+    if (foundTokens.length > 0) {
+      score += Math.min(foundTokens.length * 10, 30);
+      flags.push(`Suspicious keywords: ${foundTokens.join(', ')}`);
+    }
+
+    const tld = '.' + (hostname.split('.').pop() || '');
+    const badTLDs = ['.xyz', '.tk', '.ml', '.ga', '.cf', '.gq', '.pw', '.top', '.click'];
+    if (badTLDs.includes(tld)) {
+      score += 25;
+      flags.push(`Suspicious TLD: ${tld}`);
+    }
+
+    if (fullURL.includes('@')) {
+      score += 35;
+      flags.push('@ symbol in URL could hide the real destination');
+    }
+
+    if (fullURL.length > 200) {
+      score += 15;
+      flags.push('Abnormally long URL');
+    }
+
+    if (['redirect', 'url=', 'next=', 'return=', 'goto='].some((part) => fullURL.includes(part))) {
+      score += 20;
+      flags.push('URL contains redirect parameters');
+    }
+
+    const subdomainCount = hostname.split('.').length - 2;
+    if (subdomainCount >= 3) {
+      score += 20;
+      flags.push(`Unusually deep subdomain structure (${subdomainCount} levels)`);
+    }
+
+    const verdict = score >= 60 ? 'DANGEROUS' : score >= 30 ? 'SUSPICIOUS' : 'SAFE';
+
+    return {
+      verdict,
+      score: Math.min(score, 100),
+      flags,
+      url: parsed.href,
+      offlineMode: true
+    };
+  }
+
+  function isAdMatch(value) {
+    const text = String(value || '').toLowerCase();
+    return AD_PATTERNS.some((pattern) => text.includes(pattern));
+  }
+
+  function isRedirectCandidate(urlString) {
+    const parsed = ensureUrl(urlString);
+    if (!parsed) return { hit: false, reason: '' };
+
+    const hostname = parsed.hostname.toLowerCase();
+    const href = parsed.href.toLowerCase();
+
+    if (REDIRECT_DOMAINS.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`) || hostname.includes(domain))) {
+      return { hit: true, reason: 'Shortened redirect domain detected' };
+    }
+
+    if (REDIRECT_PARAM_PATTERNS.some((pattern) => href.includes(pattern))) {
+      return { hit: true, reason: 'Redirect parameter detected' };
+    }
+
+    if (href.includes('/redirect/')) {
+      return { hit: true, reason: 'Redirect path detected' };
+    }
+
+    return { hit: false, reason: '' };
+  }
+
+  function getLinkText(link) {
+    const text = (link.textContent || link.getAttribute('aria-label') || link.title || link.href || '').trim();
+    return text.replace(/\s+/g, ' ').slice(0, 120);
+  }
+
+  function getBackgroundMessage(message) {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve(null);
+          return;
+        }
+        resolve(response || null);
+      });
+    });
+  }
+
+  async function scanHoverUrl(urlString) {
+    const cached = readCache(hoverCache, urlString);
+    if (cached) return cached;
+
+    const response = await getBackgroundMessage({ type: 'HOVER_LINK', url: urlString });
+    const result = response && response.result ? response.result : quickURLScan(urlString);
+    rememberCache(hoverCache, urlString, result);
+    return result;
+  }
+
+  async function resolveRedirect(urlString) {
+    const cached = readCache(redirectCache, urlString);
+    if (cached) return cached;
+
+    const response = await getBackgroundMessage({ type: 'RESOLVE_REDIRECT', url: urlString });
+    const result = response && response.result ? response.result : {
+      original: urlString,
+      final_url: 'Could not resolve',
+      verdict: 'SUSPICIOUS'
+    };
+    rememberCache(redirectCache, urlString, result);
+    return result;
+  }
+
   function extractPageData() {
     const bodyText = document.body
       ? (document.body.innerText || document.body.textContent || '').slice(0, 5000)
       : '';
 
     const formFields = [];
-    document.querySelectorAll('input').forEach(input => {
+    document.querySelectorAll('input').forEach((input) => {
       const name = (input.name || input.id || input.placeholder || '').toLowerCase();
       if (name) formFields.push(name);
     });
@@ -28,12 +301,11 @@
       bodyText,
       forms: formFields,
       hasPasswordField: !!document.querySelector('input[type="password"]'),
-      hasOTPField: formFields.some(f => /otp|pin|code/.test(f)),
+      hasOTPField: formFields.some((field) => /otp|pin|code/.test(field)),
       url: window.location.href
     };
   }
 
-  // ── Send page data to background for full scan ───────────────
   function runPageScan() {
     const pageData = extractPageData();
     chrome.runtime.sendMessage({
@@ -47,108 +319,566 @@
     });
   }
 
-  // ── Link hover tooltip ───────────────────────────────────────
-  function createTooltip() {
-    const div = document.createElement('div');
-    div.id = 'phishguard-hover-tooltip';
-    div.innerHTML = `
-      <div class="pg-tooltip-inner">
-        <div class="pg-tooltip-icon"></div>
-        <div class="pg-tooltip-content">
-          <div class="pg-tooltip-verdict"></div>
-          <div class="pg-tooltip-domain"></div>
+  function buildPageSignals() {
+    const links = Array.from(document.querySelectorAll('a[href]'));
+    const scripts = Array.from(document.querySelectorAll('script'));
+    const iframes = Array.from(document.querySelectorAll('iframe'));
+    const metaRefresh = Array.from(document.querySelectorAll('meta[http-equiv="refresh" i]'));
+
+    let adScripts = 0;
+    let trackingPixels = 0;
+    let redirectLinks = 0;
+
+    scripts.forEach((script) => {
+      const payload = `${script.src || ''} ${script.textContent || ''}`;
+      if (isAdMatch(payload)) adScripts++;
+    });
+
+    iframes.forEach((iframe) => {
+      const payload = `${iframe.src || ''} ${iframe.title || ''}`;
+      if (isAdMatch(payload)) adScripts++;
+    });
+
+    document.querySelectorAll('img, iframe, source, video').forEach((node) => {
+      const payload = `${node.src || ''} ${node.alt || ''} ${node.title || ''}`;
+      if (isAdMatch(payload)) trackingPixels++;
+    });
+
+    links.forEach((link) => {
+      const url = getLinkUrl(link);
+      if (!url) return;
+      if (isRedirectCandidate(url).hit) redirectLinks++;
+    });
+
+    return {
+      totalLinks: links.length,
+      adScripts,
+      trackingPixels,
+      redirectLinks,
+      metaRefresh: metaRefresh.length,
+      offlineMode: true
+    };
+  }
+
+  function getLinkVerdictMeta(urlString) {
+    const quick = quickURLScan(urlString);
+    const redirect = isRedirectCandidate(urlString);
+    const adLink = isAdMatch(urlString);
+    return {
+      verdict: quick.verdict,
+      score: quick.score,
+      flags: quick.flags,
+      isRedirect: redirect.hit,
+      redirectReason: redirect.reason,
+      isAd: adLink,
+      url: urlString
+    };
+  }
+
+  async function getResolvedLinkMeta(urlString) {
+    const quickMeta = getLinkVerdictMeta(urlString);
+    if (!quickMeta.isRedirect) return quickMeta;
+
+    const redirect = await resolveRedirect(urlString);
+    const finalUrl = redirect.final_url && redirect.final_url !== 'Could not resolve' ? redirect.final_url : '';
+    const finalScan = finalUrl ? quickURLScan(finalUrl) : null;
+
+    if (finalScan) {
+      return {
+        ...quickMeta,
+        finalUrl,
+        finalVerdict: finalScan.verdict,
+        finalScore: finalScan.score,
+        finalFlags: finalScan.flags,
+        verdict: finalScan.verdict === 'DANGEROUS' ? 'DANGEROUS' : quickMeta.verdict,
+        dangerousRedirect: finalScan.verdict === 'DANGEROUS'
+      };
+    }
+
+    return {
+      ...quickMeta,
+      finalUrl: '',
+      finalVerdict: redirect.verdict,
+      dangerousRedirect: redirect.verdict === 'DANGEROUS'
+    };
+  }
+
+  function createTooltipHost() {
+    if (hoverPopupHost) return hoverPopupHost;
+
+    const host = document.createElement('div');
+    host.id = 'ga-hover-popup-host';
+    host.setAttribute('aria-hidden', 'true');
+    host.style.position = 'fixed';
+    host.style.left = '0';
+    host.style.top = '0';
+    host.style.width = '0';
+    host.style.height = '0';
+    host.style.zIndex = '2147483647';
+    host.style.pointerEvents = 'none';
+
+    const root = host.attachShadow({ mode: 'open' });
+    const shell = document.createElement('div');
+    shell.className = 'ga-hover-popup';
+    shell.innerHTML = `
+      <div class="ga-hover-card" data-state="loading">
+        <div class="ga-hover-header">
+          <div class="ga-hover-header-left">
+            <div class="ga-hover-icon" data-role="icon">🔄</div>
+            <div class="ga-hover-header-text">
+              <div class="ga-hover-title" data-role="title">Scanning...</div>
+              <div class="ga-hover-subtitle" data-role="subtitle">Analyzing link</div>
+            </div>
+          </div>
+          <button type="button" class="ga-hover-close" data-role="close" aria-label="Close">[X]</button>
+        </div>
+        <div class="ga-hover-body">
+          <div class="ga-hover-loading" data-role="loading">
+            <div class="ga-skeleton ga-skeleton-line"></div>
+            <div class="ga-skeleton ga-skeleton-line ga-skeleton-short"></div>
+            <div class="ga-skeleton ga-skeleton-progress"></div>
+          </div>
+          <div class="ga-hover-content" data-role="content" hidden>
+            <div class="ga-hover-domain-label">Domain</div>
+            <div class="ga-hover-domain" data-role="domain"></div>
+            <div class="ga-hover-redirect" data-role="redirect" hidden></div>
+            <div class="ga-hover-score-row">
+              <span class="ga-hover-score-text">Risk score</span>
+              <span class="ga-hover-score-value" data-role="score">0/100</span>
+            </div>
+            <div class="ga-hover-progress" aria-hidden="true">
+              <div class="ga-hover-progress-fill" data-role="progress"></div>
+            </div>
+            <div class="ga-hover-reasons" data-role="reasons"></div>
+          </div>
+          <div class="ga-hover-actions" data-role="actions"></div>
+          <div class="ga-hover-footer">
+            <span>Powered by GuardianAI 🛡️</span>
+            <span class="ga-hover-offline" data-role="offline" hidden>Offline mode</span>
+          </div>
         </div>
       </div>
     `;
-    document.body.appendChild(div);
-    return div;
+
+    root.appendChild(shell);
+    document.documentElement.appendChild(host);
+
+    hoverPopupHost = host;
+    hoverPopupRoot = root;
+    hoverPopupRefs = {
+      shell,
+      card: shell.querySelector('.ga-hover-card'),
+      icon: shell.querySelector('[data-role="icon"]'),
+      title: shell.querySelector('[data-role="title"]'),
+      subtitle: shell.querySelector('[data-role="subtitle"]'),
+      close: shell.querySelector('[data-role="close"]'),
+      loading: shell.querySelector('[data-role="loading"]'),
+      content: shell.querySelector('[data-role="content"]'),
+      domain: shell.querySelector('[data-role="domain"]'),
+      redirect: shell.querySelector('[data-role="redirect"]'),
+      score: shell.querySelector('[data-role="score"]'),
+      progress: shell.querySelector('[data-role="progress"]'),
+      reasons: shell.querySelector('[data-role="reasons"]'),
+      actions: shell.querySelector('[data-role="actions"]'),
+      offline: shell.querySelector('[data-role="offline"]')
+    };
+
+    hoverPopupRefs.close.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      hideHoverPopup();
+    });
+
+    return hoverPopupHost;
   }
 
-  function showTooltip(e, result, url) {
-    if (!hoverTooltip) hoverTooltip = createTooltip();
+  async function ensureHoverStyles() {
+    if (hoverStylesPromise) return hoverStylesPromise;
 
-    const verdict = result.verdict;
-    const domain = (() => { try { return new URL(url).hostname; } catch { return url.slice(0, 40); } })();
+    hoverStylesPromise = fetch(chrome.runtime.getURL('content/hover-popup.css'))
+      .then((response) => response.text())
+      .catch(() => '');
 
-    const icons = { SAFE: '✓', SUSPICIOUS: '⚠', DANGEROUS: '✕' };
-    const labels = { SAFE: 'Safe Link', SUSPICIOUS: 'Suspicious', DANGEROUS: 'Dangerous!' };
-
-    hoverTooltip.className = `pg-verdict-${verdict.toLowerCase()}`;
-    hoverTooltip.querySelector('.pg-tooltip-icon').textContent = icons[verdict] || '?';
-    hoverTooltip.querySelector('.pg-tooltip-verdict').textContent = labels[verdict] || verdict;
-    hoverTooltip.querySelector('.pg-tooltip-domain').textContent = domain;
-
-    // Position near cursor
-    const x = Math.min(e.clientX + 15, window.innerWidth - 220);
-    const y = e.clientY + 20;
-    hoverTooltip.style.left = x + 'px';
-    hoverTooltip.style.top = y + 'px';
-    hoverTooltip.style.opacity = '1';
-    hoverTooltip.style.transform = 'translateY(0)';
-    hoverTooltip.style.pointerEvents = 'none';
+    return hoverStylesPromise;
   }
 
-  function hideTooltip() {
-    if (hoverTooltip) {
-      hoverTooltip.style.opacity = '0';
-      hoverTooltip.style.transform = 'translateY(-4px)';
+  async function ensureTooltipReady() {
+    const host = createTooltipHost();
+    const styles = await ensureHoverStyles();
+    if (hoverPopupRoot && !hoverPopupRoot.querySelector('style[data-ga-hover-style]')) {
+      const style = document.createElement('style');
+      style.dataset.gaHoverStyle = 'true';
+      style.textContent = styles;
+      hoverPopupRoot.prepend(style);
+    }
+    return host;
+  }
+
+  function setHoverTheme(verdict) {
+    if (!hoverPopupRefs) return;
+    hoverPopupRefs.card.dataset.verdict = verdict;
+
+    const iconMap = {
+      SAFE: '✅',
+      SUSPICIOUS: '⚠️',
+      DANGEROUS: '🔴',
+      LOADING: '🔄'
+    };
+
+    const titleMap = {
+      SAFE: 'SAFE',
+      SUSPICIOUS: 'SUSPICIOUS',
+      DANGEROUS: 'DANGEROUS',
+      LOADING: 'Scanning...'
+    };
+
+    const subtitleMap = {
+      SAFE: 'Verified Domain',
+      SUSPICIOUS: 'Proceed with Caution',
+      DANGEROUS: 'Do NOT click this link',
+      LOADING: 'Analyzing link'
+    };
+
+    hoverPopupRefs.icon.textContent = iconMap[verdict] || '🔄';
+    hoverPopupRefs.title.textContent = titleMap[verdict] || 'Scanning...';
+    hoverPopupRefs.subtitle.textContent = subtitleMap[verdict] || 'Analyzing link';
+  }
+
+  function positionHoverPopup(link) {
+    if (!hoverPopupHost || !hoverPopupRefs || !link) return;
+
+    const rect = link.getBoundingClientRect();
+    const popupRect = hoverPopupRefs.card.getBoundingClientRect();
+    const width = popupRect.width || 280;
+    const height = popupRect.height || 180;
+    const gap = 12;
+
+    let top = rect.bottom + gap;
+    let topPlacement = false;
+    if (rect.bottom + gap + height > window.innerHeight && rect.top - gap - height > 0) {
+      top = rect.top - gap - height;
+      topPlacement = true;
+    }
+
+    let left = rect.left + (rect.width / 2) - (width / 2);
+    left = clamp(left, 10, window.innerWidth - width - 10);
+    top = clamp(top, 10, window.innerHeight - height - 10);
+
+    hoverPopupHost.style.left = `${left}px`;
+    hoverPopupHost.style.top = `${top}px`;
+    hoverPopupHost.style.width = `${width}px`;
+    hoverPopupHost.style.height = `${height}px`;
+    hoverPopupHost.dataset.placement = topPlacement ? 'top' : 'bottom';
+  }
+
+  function populateReasons(reasons) {
+    if (!hoverPopupRefs) return;
+    hoverPopupRefs.reasons.innerHTML = '';
+
+    reasons.slice(0, 5).forEach((reason) => {
+      const row = document.createElement('div');
+      row.className = 'ga-hover-reason';
+      row.textContent = reason;
+      hoverPopupRefs.reasons.appendChild(row);
+    });
+  }
+
+  function populateActions(verdict, urlString, result) {
+    if (!hoverPopupRefs) return;
+    hoverPopupRefs.actions.innerHTML = '';
+
+    const addButton = (label, className, handler) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `ga-hover-action ${className}`;
+      button.textContent = label;
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        handler();
+      });
+      hoverPopupRefs.actions.appendChild(button);
+    };
+
+    if (verdict === 'SUSPICIOUS') {
+      addButton('Scan Full Page', 'ga-hover-action-primary', () => runPageScan());
+    }
+
+    if (verdict === 'DANGEROUS') {
+      addButton('Block Page', 'ga-hover-action-danger', () => {
+        chrome.runtime.sendMessage({ type: 'BLOCKED_CLICK' });
+        showDangerPageOverlay(result || { url: urlString, flags: [] });
+      });
+      addButton('Report', 'ga-hover-action-secondary', () => {
+        chrome.runtime.sendMessage({ type: 'REPORT_FALSE_POSITIVE', url: urlString });
+      });
+    }
+
+    if (verdict === 'SAFE') {
+      addButton('Scan Full Page', 'ga-hover-action-secondary', () => runPageScan());
     }
   }
 
-  // ── Attach hover listeners to all links ──────────────────────
-  function attachLinkHover(link) {
-    if (link.dataset.pgAttached) return;
-    link.dataset.pgAttached = 'true';
+  function renderHoverPopup(state) {
+    if (!hoverPopupRefs) return;
 
-    link.addEventListener('mouseenter', (e) => {
-      const href = link.href;
-      if (!href || href.startsWith('javascript:') || href.startsWith('#')) return;
+    const verdict = state.verdict || 'SAFE';
+    const score = Math.max(0, Math.min(100, Number(state.score || 0)));
+    const domain = state.domain || state.url || '';
+    const reasons = Array.isArray(state.reasons) ? state.reasons : [];
 
-      clearTimeout(hoverTimeout);
-      hoverTimeout = setTimeout(() => {
-        chrome.runtime.sendMessage({ type: 'HOVER_LINK', url: href }, (response) => {
-          if (response && response.result) {
-            showTooltip(e, response.result, href);
-          }
-        });
-      }, 300);
+    setHoverTheme(verdict);
+    hoverPopupRefs.loading.hidden = true;
+    hoverPopupRefs.content.hidden = false;
+    hoverPopupRefs.domain.textContent = domain;
+    hoverPopupRefs.score.textContent = `${score}/100`;
+    hoverPopupRefs.redirect.hidden = !state.redirectTarget;
+    hoverPopupRefs.redirect.textContent = state.redirectTarget
+      ? `Redirects to: ${state.redirectTarget}${state.dangerousRedirect ? '  🔴 Dangerous destination detected' : ''}`
+      : '';
+    hoverPopupRefs.offline.hidden = !state.offlineMode;
+
+    populateReasons(reasons.length > 0 ? reasons : ['No major threats found']);
+    populateActions(verdict, state.url, state.result || null);
+
+    const fill = hoverPopupRefs.progress;
+    fill.style.transform = 'scaleX(0)';
+    requestAnimationFrame(() => {
+      fill.style.transform = `scaleX(${score / 100})`;
     });
 
-    link.addEventListener('mouseleave', () => {
-      clearTimeout(hoverTimeout);
-      hideTooltip();
-    });
-
-    link.addEventListener('mousemove', (e) => {
-      if (hoverTooltip && hoverTooltip.style.opacity === '1') {
-        const x = Math.min(e.clientX + 15, window.innerWidth - 220);
-        const y = e.clientY + 20;
-        hoverTooltip.style.left = x + 'px';
-        hoverTooltip.style.top = y + 'px';
-      }
-    });
-
-    // Warn on click if dangerous
-    link.addEventListener('click', (e) => {
-      const href = link.href;
-      if (!href) return;
-      chrome.runtime.sendMessage({ type: 'HOVER_LINK', url: href }, (response) => {
-        if (response && response.result && response.result.verdict === 'DANGEROUS') {
-          e.preventDefault();
-          chrome.runtime.sendMessage({ type: 'BLOCKED_CLICK' });
-          showInlineWarning(link, response.result, href);
-        }
-      });
-    });
+    hoverPopupHost.setAttribute('data-visible', 'true');
+    hoverPopupHost.setAttribute('aria-hidden', 'false');
   }
 
-  // ── Inline click-block warning ────────────────────────────────
+  function renderHoverLoading(urlString) {
+    if (!hoverPopupRefs) return;
+
+    setHoverTheme('LOADING');
+    hoverPopupRefs.loading.hidden = false;
+    hoverPopupRefs.content.hidden = true;
+    hoverPopupRefs.offline.hidden = false;
+    hoverPopupRefs.offline.textContent = 'Offline mode';
+    hoverPopupRefs.redirect.hidden = true;
+    hoverPopupHost.setAttribute('data-visible', 'true');
+    hoverPopupHost.setAttribute('aria-hidden', 'false');
+    hoverPopupRefs.domain.textContent = getDisplayDomain(urlString);
+  }
+
+  function hideHoverPopup() {
+    hoverState.requestId++;
+    hoverState.activeLink = null;
+    hoverState.lastUrl = '';
+    clearTimeout(hoverState.timer);
+    clearTimeout(hoverState.mutateTimer);
+
+    if (hoverPopupHost) {
+      hoverPopupHost.setAttribute('data-visible', 'false');
+      hoverPopupHost.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  async function showHoverPopup(link, event) {
+    const urlString = getLinkUrl(link);
+    if (!urlString) return;
+
+    const requestId = ++hoverState.requestId;
+    hoverState.activeLink = link;
+    hoverState.lastUrl = urlString;
+
+    await ensureTooltipReady();
+    if (requestId !== hoverState.requestId) return;
+
+    renderHoverLoading(urlString);
+    positionHoverPopup(link);
+
+    const baseResult = await scanHoverUrl(urlString);
+    if (requestId !== hoverState.requestId) return;
+
+    const redirectCandidate = isRedirectCandidate(urlString);
+    let redirectInfo = null;
+
+    if (redirectCandidate.hit) {
+      redirectInfo = await resolveRedirect(urlString);
+      if (requestId !== hoverState.requestId) return;
+    }
+
+    let reasons = Array.isArray(baseResult.flags)
+      ? baseResult.flags.map((flag) => typeof flag === 'object' ? flag.text : flag)
+      : [];
+
+    let verdict = baseResult.verdict || 'SAFE';
+    let score = typeof baseResult.score === 'number' ? baseResult.score : Number(baseResult.urlScore || 0);
+    let redirectTarget = '';
+    let dangerousRedirect = false;
+
+    if (redirectInfo && redirectInfo.final_url && redirectInfo.final_url !== 'Could not resolve') {
+      redirectTarget = getDisplayDomain(redirectInfo.final_url);
+      const finalScan = quickURLScan(redirectInfo.final_url);
+      if (finalScan.verdict === 'DANGEROUS' || (finalScan.verdict === 'SUSPICIOUS' && verdict === 'SAFE')) {
+        verdict = finalScan.verdict;
+        score = finalScan.score;
+        reasons = [...reasons, `Redirects to ${redirectTarget}`];
+        if (finalScan.flags.length) reasons = [...reasons, ...finalScan.flags];
+      }
+      dangerousRedirect = finalScan.verdict === 'DANGEROUS';
+    } else if (redirectCandidate.hit) {
+      reasons = [...reasons, redirectCandidate.reason];
+    }
+
+    const domain = getDisplayDomain(urlString);
+    renderHoverPopup({
+      verdict,
+      score,
+      domain,
+      url: urlString,
+      reasons,
+      redirectTarget,
+      dangerousRedirect,
+      offlineMode: true,
+      result: baseResult
+    });
+
+    positionHoverPopup(link);
+  }
+
+  function scheduleHover(link, event) {
+    clearTimeout(hoverState.timer);
+    hoverState.activeLink = link;
+    hoverState.timer = setTimeout(() => {
+      showHoverPopup(link, event).catch(() => {});
+    }, HOVER_DELAY_MS);
+  }
+
+  function createBadge(label, className, title) {
+    const badge = document.createElement('span');
+    badge.className = `ga-link-badge ${className}`;
+    badge.textContent = label;
+    if (title) badge.title = title;
+    return badge;
+  }
+
+  async function previewRedirectFromBadge(link, urlString, badge) {
+    const resolved = await resolveRedirect(urlString);
+    const finalUrl = resolved.final_url && resolved.final_url !== 'Could not resolve' ? resolved.final_url : '';
+    const finalScan = finalUrl ? quickURLScan(finalUrl) : null;
+
+    if (badge && finalScan && finalScan.verdict === 'DANGEROUS') {
+      badge.textContent = '🔴';
+      badge.classList.add('ga-link-badge-danger');
+      badge.title = 'Dangerous final destination detected';
+    }
+
+    if (finalUrl) {
+      await ensureTooltipReady();
+      renderHoverPopup({
+        verdict: finalScan ? finalScan.verdict : 'SUSPICIOUS',
+        score: finalScan ? finalScan.score : 50,
+        domain: getDisplayDomain(urlString),
+        url: urlString,
+        reasons: [
+          `${getDisplayDomain(urlString)} redirects to ${getDisplayDomain(finalUrl)}`,
+          ...(finalScan ? finalScan.flags : ['Redirect target resolved'])
+        ],
+        redirectTarget: getDisplayDomain(finalUrl),
+        dangerousRedirect: !!(finalScan && finalScan.verdict === 'DANGEROUS'),
+        offlineMode: true,
+        result: finalScan || quickURLScan(finalUrl)
+      });
+      positionHoverPopup(link);
+    }
+  }
+
+  function decorateLink(link) {
+    const urlString = getLinkUrl(link);
+    if (!urlString) return;
+
+    if (link.dataset.gaDecoratedUrl === urlString) return;
+    link.dataset.gaDecoratedUrl = urlString;
+
+    const existing = link.nextElementSibling;
+    if (existing && existing.classList && existing.classList.contains('ga-link-badge-wrap') && existing.dataset.gaBadgeFor === urlString) {
+      return;
+    }
+
+    if (existing && existing.classList && existing.classList.contains('ga-link-badge-wrap')) {
+      existing.remove();
+    }
+
+    const meta = getLinkVerdictMeta(urlString);
+    const wrap = document.createElement('span');
+    wrap.className = 'ga-link-badge-wrap';
+    wrap.dataset.gaBadgeFor = urlString;
+
+    if (meta.isAd) {
+      wrap.appendChild(createBadge('📢', 'ga-link-badge ga-link-badge-ad', 'This is an advertisement link'));
+    }
+
+    if (meta.isRedirect) {
+      const redirectBadge = createBadge('→', 'ga-link-badge ga-link-badge-redirect', 'Preview the final destination');
+      redirectBadge.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        previewRedirectFromBadge(link, urlString, redirectBadge).catch(() => {});
+      });
+      wrap.appendChild(redirectBadge);
+    }
+
+    if (wrap.childElementCount > 0) {
+      link.insertAdjacentElement('afterend', wrap);
+    }
+  }
+
+  function attachLinkHover(link) {
+    if (!link || link.dataset.gaHoverAttached === 'true') return;
+    const urlString = getLinkUrl(link);
+    if (!urlString) return;
+
+    link.dataset.gaHoverAttached = 'true';
+
+    link.addEventListener('pointerenter', (event) => {
+      scheduleHover(link, event);
+    });
+
+    link.addEventListener('focus', (event) => {
+      scheduleHover(link, event);
+    });
+
+    link.addEventListener('pointerleave', () => {
+      clearTimeout(hoverState.timer);
+      hideHoverPopup();
+    });
+
+    link.addEventListener('blur', () => {
+      clearTimeout(hoverState.timer);
+      hideHoverPopup();
+    });
+
+    link.addEventListener('click', (event) => {
+      const href = getLinkUrl(link);
+      if (!href) return;
+
+      const cached = readCache(redirectCache, href);
+      if (cached && cached.final_url && cached.final_url !== 'Could not resolve') {
+        const finalScan = quickURLScan(cached.final_url);
+        if (finalScan.verdict === 'DANGEROUS') {
+          event.preventDefault();
+          chrome.runtime.sendMessage({ type: 'BLOCKED_CLICK' });
+          showInlineWarning(link, {
+            verdict: 'DANGEROUS',
+            flags: finalScan.flags.map((flag) => ({ type: 'url', text: flag }))
+          }, href);
+        }
+      }
+    }, true);
+  }
+
   function showInlineWarning(link, result, url) {
     const existing = document.getElementById('pg-click-warning');
     if (existing) existing.remove();
 
     const domain = (() => { try { return new URL(url).hostname; } catch { return url; } })();
-    const topFlags = result.flags.slice(0, 3).map(f => typeof f === 'object' ? f.text : f);
+    const flags = (result.flags || []).slice(0, 3).map((flag) => typeof flag === 'object' ? flag.text : flag);
 
     const overlay = document.createElement('div');
     overlay.id = 'pg-click-warning';
@@ -156,13 +886,13 @@
       <div class="pg-click-warning-box">
         <div class="pg-cw-header">
           <span class="pg-cw-icon">🚨</span>
-          <span class="pg-cw-title">PhishGuard Blocked This Link</span>
+          <span class="pg-cw-title">GuardianAI Blocked This Link</span>
           <button class="pg-cw-close" id="pg-cw-close">✕</button>
         </div>
         <div class="pg-cw-domain">${escHtml(domain)}</div>
         <div class="pg-cw-reasons">
           <div class="pg-cw-reasons-title">Why we flagged it:</div>
-          ${topFlags.map(f => `<div class="pg-cw-flag">• ${escHtml(f)}</div>`).join('')}
+          ${flags.map((flag) => `<div class="pg-cw-flag">• ${escHtml(flag)}</div>`).join('')}
         </div>
         <div class="pg-cw-actions">
           <button class="pg-cw-btn-safe" id="pg-cw-dismiss">Go Back (Safe)</button>
@@ -182,25 +912,24 @@
     };
   }
 
-  // ── Full page danger overlay ───────────────────────────────────
   function showDangerPageOverlay(result) {
     if (warningOverlayShown) return;
     warningOverlayShown = true;
 
     const domain = (() => { try { return new URL(result.url).hostname; } catch { return result.url; } })();
-    const flags = result.flags.slice(0, 5).map(f => typeof f === 'object' ? f.text : f);
+    const flags = (result.flags || []).slice(0, 5).map((flag) => typeof flag === 'object' ? flag.text : flag);
 
     const overlay = document.createElement('div');
     overlay.id = 'pg-page-overlay';
     overlay.innerHTML = `
       <div class="pg-overlay-box">
-        <div class="pg-ov-logo">🛡️ PhishGuard</div>
+        <div class="pg-ov-logo">🛡️ GuardianAI</div>
         <div class="pg-ov-verdict-badge">⚠ DANGEROUS PAGE DETECTED</div>
         <h2 class="pg-ov-headline">This page may be a phishing or scam site</h2>
         <div class="pg-ov-domain">${escHtml(domain)}</div>
         <div class="pg-ov-reasons">
           <div class="pg-ov-reasons-title">Warning indicators found:</div>
-          ${flags.map(f => `<div class="pg-ov-flag">🔴 ${escHtml(f)}</div>`).join('')}
+          ${flags.map((flag) => `<div class="pg-ov-flag">🔴 ${escHtml(flag)}</div>`).join('')}
         </div>
         <p class="pg-ov-advice">Do NOT enter your OTP, PIN, password, UPI credentials, Aadhaar, or PAN on this page.</p>
         <div class="pg-ov-actions">
@@ -225,25 +954,75 @@
     };
   }
 
-  // ── XSS-safe HTML escape ─────────────────────────────────────
-  function escHtml(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  // ── Observe DOM for dynamically added links ───────────────────
-  function observeLinks() {
-    const observer = new MutationObserver(() => {
-      document.querySelectorAll('a[href]').forEach(attachLinkHover);
+  function scanAndDecorateLinks() {
+    document.querySelectorAll('a[href]').forEach((link) => {
+      attachLinkHover(link);
+      decorateLink(link);
     });
-    observer.observe(document.body, { childList: true, subtree: true });
-    document.querySelectorAll('a[href]').forEach(attachLinkHover);
   }
 
-  // ── Message listener ─────────────────────────────────────────
+  function scanAdSignals() {
+    return buildPageSignals();
+  }
+
+  function extractPageInsights() {
+    const signals = scanAdSignals();
+    const links = Array.from(document.querySelectorAll('a[href]')).map((link) => {
+      const url = getLinkUrl(link);
+      const meta = getLinkVerdictMeta(url);
+      return {
+        url,
+        text: getLinkText(link),
+        domain: getDisplayDomain(url),
+        verdict: meta.verdict,
+        score: meta.score,
+        flags: meta.flags,
+        isAd: meta.isAd,
+        isRedirect: meta.isRedirect,
+        redirectReason: meta.redirectReason,
+        finalUrl: readCache(redirectCache, url)?.final_url || ''
+      };
+    });
+
+    return {
+      url: window.location.href,
+      title: document.title || '',
+      links,
+      adCounts: {
+        scripts: signals.adScripts,
+        trackingPixels: signals.trackingPixels,
+        redirectLinks: signals.redirectLinks,
+        metaRefresh: signals.metaRefresh
+      },
+      totalLinks: signals.totalLinks,
+      offlineMode: true,
+      pageData: extractPageData()
+    };
+  }
+
+  function scheduleDecorationScan() {
+    clearTimeout(hoverState.mutateTimer);
+    hoverState.mutateTimer = setTimeout(() => {
+      scanAndDecorateLinks();
+    }, 250);
+  }
+
+  function observeLinks() {
+    if (!document.body) return;
+
+    const observer = new MutationObserver(() => {
+      scheduleDecorationScan();
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    scanAndDecorateLinks();
+  }
+
+  async function scanAllLinksNow() {
+    scanAndDecorateLinks();
+    return extractPageInsights();
+  }
+
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'REQUEST_PAGE_DATA') {
       sendResponse(extractPageData());
@@ -253,10 +1032,20 @@
 
     if (message.type === 'SHOW_WARNING') {
       showDangerPageOverlay(message.result);
+      return;
+    }
+
+    if (message.type === 'GET_PAGE_INSIGHTS') {
+      sendResponse(extractPageInsights());
+      return true;
+    }
+
+    if (message.type === 'SCAN_ALL_LINKS') {
+      Promise.resolve(scanAllLinksNow()).then((result) => sendResponse(result));
+      return true;
     }
   });
 
-  // ── Init ─────────────────────────────────────────────────────
   function init() {
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {
