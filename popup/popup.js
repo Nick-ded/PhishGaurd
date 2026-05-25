@@ -165,6 +165,12 @@ const KNOWN_BAD_DOMAINS_POPUP = new Set([
   'tamilyogi.com', 'moviesda.com', 'downloadhub.in',
   'worldfree4u.com', 'mp4moviez.com', 'afilmywap.com',
   'rdxhd.com', 'skymovies.in', 'uwatchfree.com',
+  // Music piracy
+  'pagalworld.com', 'pagalworld.in', 'pagalworld.is', 'pagalworld.net',
+  'djpunjab.com', 'djpunjab.net', 'djpunjab.is',
+  'mr-jatt.com', 'mrjatt.net', 'songspk.com', 'downloadming.com',
+  'wapking.com', 'freshmaza.com', 'mp3mad.com',
+  // Phishing
   'paytm-kyc.com', 'paytm-verify.com', 'sbi-netbanking.xyz',
   'hdfc-kyc.xyz', 'icici-verify.xyz', 'amazon-offer.xyz',
   'jio-offer.com', 'irctc-refund.com', 'uidai-update.com'
@@ -179,7 +185,12 @@ const PIRACY_TOKENS_POPUP = [
   'soap2day', 'solarmovie', 'primewire', 'watchseries',
   'lookmovie', 'netmirror', 'iosmirror', 'tamilrockers',
   'piratebay', 'kickasstorrent', 'rarbg', 'jiorockers',
-  'isaimini', 'cinemavilla', 'skymovies', 'pagalworld'
+  'isaimini', 'cinemavilla', 'skymovies',
+  // Music piracy
+  'pagalworld', 'djpunjab', 'mrjatt', 'mr-jatt', 'songspk',
+  'downloadming', 'wapking', 'freshmaza', 'mp3mad', 'mp3skull',
+  // Game cracks
+  'fitgirl', 'skidrow', 'crackwatch', 'steamunlock'
 ];
 
 function getBaseDomainPopup(hostname) {
