@@ -9,7 +9,12 @@
   const HOVER_DELAY_MS = 600;
   const CACHE_LIMIT = 200;
   const CACHE_TTL = 3 * 60 * 1000; // 3 minutes
-  const GOOGLE_SERP_RE = /^https:\/\/(www\.)?google\.(com|co\.in)\/search/;
+
+  // Matches all major search engine result pages
+  const GOOGLE_SERP_RE = /^https:\/\/(www\.)?google\.(com|co\.in|co\.uk|com\.au|ca|de|fr|co\.jp)\/search/;
+
+  // Matches non-Google search engines where we use inline badges instead of SERP scanner
+  const OTHER_SERP_RE = /^https:\/\/(search\.brave\.com|www\.bing\.com|duckduckgo\.com|search\.yahoo\.com|www\.ecosia\.org|www\.startpage\.com)\//;
 
   const TRUSTED_DOMAINS = new Set([
     'google.com', 'youtube.com', 'facebook.com', 'twitter.com',
@@ -1915,6 +1920,8 @@
   }
 
   function scanAndDecorateLinks() {
+    // Skip Google SERP — handled by dedicated scanner with Google-specific DOM selectors
+    // Brave Search, Bing, DDG etc use inline badges (this function) — they work on any page
     if (GOOGLE_SERP_RE.test(location.href)) return;
 
     document.querySelectorAll('a[href]').forEach((link) => {
