@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PhishGuard — Scam Link Detector",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "AI-powered real-time phishing & scam link detector with India-first language support. Detects fake UPI, KYC, and banking pages instantly.",
   "permissions": [
     "activeTab",

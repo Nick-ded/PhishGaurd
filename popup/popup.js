@@ -422,14 +422,15 @@ function renderVerdict(result, url) {
   // Safe sites: 70–99 range seeded from URL so it's consistent
   // Suspicious: 45–69 range
   // Dangerous: 0–44 range
-  const safetyScore = toSafetyScore(rawScore, verdict, url || state.url || '');
+  const urlSeed = url || state.url || '';
+  const safetyScore = toSafetyScore(rawScore, verdict, urlSeed);
 
   dom.verdictCard.className = `pg-verdict-card pg-${titleClass}`;
   dom.verdictIcon.innerHTML = iconFor(verdict === 'DANGEROUS' ? 'danger' : verdict === 'SUSPICIOUS' ? 'suspicious' : 'safe');
   dom.verdictTitle.textContent = formatVerdictTitle(verdict, trusted);
   dom.verdictSubtitle.textContent = formatVerdictSubtitle(verdict, safetyScore, flags);
   dom.verdictScore.textContent = `${safetyScore}/100`;
-  dom.currentUrl.textContent = truncateUrl(url || state.url || '');
+  dom.currentUrl.textContent = truncateUrl(urlSeed);
   setLiveState(true);
 
   updateHealthBar(safetyScore, verdict);
@@ -438,11 +439,12 @@ function renderVerdict(result, url) {
 // Convert internal threat score (0=safe, 100=dangerous) to
 // a user-facing safety score (70-100=safe, 45-69=suspicious, 0-44=dangerous)
 function toSafetyScore(threatScore, verdict, urlSeed) {
-  if (verdict === 'SAFE') {
+  if (verdict === 'SAFE' || verdict === 'UNKNOWN') {
     // Seed a consistent number 70–99 from the URL string
     let hash = 0;
-    for (let i = 0; i < urlSeed.length; i++) {
-      hash = (hash * 31 + urlSeed.charCodeAt(i)) >>> 0;
+    const seed = String(urlSeed || 'default');
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
     }
     return 70 + (hash % 30); // 70–99
   }
