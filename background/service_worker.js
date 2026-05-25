@@ -3,25 +3,22 @@
 // background/service_worker.js
 // ============================================================
 
-importScripts('../utils/detector.js');
+importScripts('../utils/detector.js', '../utils/ml_scorer.js');
 
-// ── In-memory cache for scan results ────────────────────────
 const verdictCache = new Map();
-const pageStatsByTab = new Map();
+const pageStatsMap = new Map();
 const serpStatsByTab = new Map();
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const CACHE_TTL = 10 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 200;
 
-// ── Extension icon states ─────────────────────────────────────
 const BADGE_CONFIG = {
-  SAFE:       { text: '✓',   color: '#22c55e', bg: '#14532d' },
-  SUSPICIOUS: { text: '!',   color: '#f59e0b', bg: '#78350f' },
-  DANGEROUS:  { text: '✕',   color: '#ef4444', bg: '#7f1d1d' },
-  SCANNING:   { text: '...',  color: '#94a3b8', bg: '#1e293b' },
-  UNKNOWN:    { text: '?',   color: '#94a3b8', bg: '#1e293b' }
+  SAFE: { text: '100', color: '#22863a' },
+  SUSPICIOUS: { text: '50', color: '#b08800' },
+  DANGEROUS: { text: '0', color: '#cb2431' },
+  SCANNING: { text: '...', color: '#94a3b8' },
+  UNKNOWN: { text: '?', color: '#94a3b8' }
 };
 
-// ── Stats tracking ─────────────────────────────────────────────
 let stats = {
   totalScanned: 0,
   safe: 0,
@@ -31,7 +28,6 @@ let stats = {
   hindi: 0
 };
 
-// Load persisted stats on startup
 chrome.storage.session.get(['phishguard_stats'], (sessionResult) => {
   if (sessionResult.phishguard_stats) {
     stats = sessionResult.phishguard_stats;
@@ -51,15 +47,11 @@ function saveStats() {
   chrome.storage.session.set({ phishguard_stats: stats });
 }
 
-function rememberCache(urlString, result) {
-  if (!urlString || !result) return;
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
 
-  if (verdictCache.has(urlString)) {
-    verdictCache.delete(urlString);
-  }
-
-  verdictCache.set(urlString, { result, timestamp: Date.now() });
-
+function purgeCache() {
   while (verdictCache.size > MAX_CACHE_ENTRIES) {
     const oldestKey = verdictCache.keys().next().value;
     if (oldestKey === undefined) break;
@@ -67,151 +59,69 @@ function rememberCache(urlString, result) {
   }
 }
 
+function rememberCache(urlString, entry) {
+  if (!urlString || !entry) return;
+  verdictCache.set(urlString, { ...entry, ts: Date.now() });
+  purgeCache();
+}
+
+function getCacheEntry(urlString) {
+  const entry = verdictCache.get(urlString);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL) {
+    verdictCache.delete(urlString);
+    return null;
+  }
+  return entry;
+}
+
 function isGoogleSerpUrl(urlString) {
   return /^https:\/\/(www\.)?google\.(com|co\.in)\/search/.test(String(urlString || ''));
 }
 
 function setSerpBadge(tabId, dangerCount, suspiciousCount) {
-  let badgeText = '✓';
-  let badgeColor = '#3B6D11';
+  let badgeText = '0';
+  let badgeColor = '#22863a';
 
   if (Number(dangerCount || 0) > 0) {
-    badgeText = `${Number(dangerCount)}⚠`;
-    badgeColor = '#E24B4A';
+    badgeText = String(Number(dangerCount));
+    badgeColor = '#cb2431';
   } else if (Number(suspiciousCount || 0) > 0) {
-    badgeText = `${Number(suspiciousCount)}⚠`;
-    badgeColor = '#BA7517';
+    badgeText = String(Number(suspiciousCount));
+    badgeColor = '#b08800';
   }
 
   chrome.action.setBadgeText({ text: badgeText, tabId });
   chrome.action.setBadgeBackgroundColor({ color: badgeColor, tabId });
 }
 
-function storePageStats(tabId, urlString, pageData, result) {
-  if (!tabId) return;
-
-  const protocol = pageData?.protocol || (() => {
-    try { return new URL(urlString).protocol; } catch { return 'https:'; }
-  })();
-
-  const cacheEntry = urlString ? verdictCache.get(urlString) : null;
-  const cacheRemainingMs = cacheEntry ? Math.max(0, CACHE_TTL - (Date.now() - cacheEntry.timestamp)) : 0;
-
-  pageStatsByTab.set(tabId, {
-    links: Number(pageData?.linkCount ?? pageData?.totalLinks ?? 0),
-    externalLinks: Number(pageData?.externalLinkCount ?? 0),
-    ads: Number(pageData?.adCount ?? 0),
-    suspicious: Number(result?.verdict === 'DANGEROUS' ? 1 : result?.verdict === 'SUSPICIOUS' ? 1 : 0),
-    protocol,
-    hasSensitiveForms: Number(pageData?.sensitiveFormCount ?? (pageData?.hasPasswordField || pageData?.hasOTPField ? 1 : 0)),
-    cacheRemainingMs,
-    tlsValid: typeof pageData?.tlsValid === 'boolean' ? pageData.tlsValid : protocol === 'https:',
-    updatedAt: Date.now(),
-    url: urlString
-  });
-}
-
-// ── Badge update helper ────────────────────────────────────────
-function updateBadge(tabId, verdict) {
+function updateBadge(tabId, verdict, trustScore) {
   const config = BADGE_CONFIG[verdict] || BADGE_CONFIG.UNKNOWN;
-  chrome.action.setBadgeText({ text: config.text, tabId });
+  const text = Number.isFinite(Number(trustScore)) ? String(Math.round(Number(trustScore))) : (config.text || '?');
+  chrome.action.setBadgeText({ text, tabId });
   chrome.action.setBadgeBackgroundColor({ color: config.color, tabId });
 }
 
-// ── Core scan function ─────────────────────────────────────────
-async function scanURL(urlString, tabId) {
-  if (!urlString || urlString.startsWith('chrome://') ||
-      urlString.startsWith('chrome-extension://') ||
-      urlString.startsWith('about:') || urlString.startsWith('data:')) {
-    return null;
-  }
+function buildPageStats(tabId, urlString, pageData, entry) {
+  const protocol = String(pageData?.protocol || (() => {
+    try { return new URL(urlString).protocol; } catch { return 'https:'; }
+  })() || 'https:').toUpperCase().replace(':', '');
 
-  // Check cache
-  const cached = verdictCache.get(urlString);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.result;
-  }
+  const cacheEntry = getCacheEntry(urlString);
+  const cacheRemainingMs = cacheEntry ? Math.max(0, CACHE_TTL - (Date.now() - cacheEntry.ts)) : 0;
 
-  // Update badge to scanning state
-  if (tabId) updateBadge(tabId, 'SCANNING');
-
-  // URL analysis
-  const urlAnalysis = PhishGuardDetector.analyzeURL(urlString);
-
-  // If trusted domain, short-circuit
-  if (urlAnalysis.trusted) {
-    const result = {
-      verdict: 'SAFE',
-      urlScore: 0,
-      pageScore: 0,
-      flags: ['Verified trusted domain'],
-      url: urlString,
-      timestamp: Date.now()
-    };
-    rememberCache(urlString, result);
-    if (tabId) updateBadge(tabId, 'SAFE');
-    updateStats('SAFE');
-    return result;
-  }
-
-  return {
-    urlScore: urlAnalysis.score,
-    urlFlags: urlAnalysis.flags,
-    url: urlString,
-    pending: true // page analysis pending
-  };
-}
-
-// ── Full scan with page data ───────────────────────────────────
-async function fullScan(urlString, pageData, tabId) {
-  const urlAnalysis = PhishGuardDetector.analyzeURL(urlString);
-
-  if (urlAnalysis.trusted) {
-    const result = {
-      verdict: 'SAFE',
-      urlScore: 0,
-      pageScore: 0,
-      flags: ['Verified trusted domain'],
-      url: urlString,
-      timestamp: Date.now()
-    };
-    rememberCache(urlString, result);
-    if (tabId) updateBadge(tabId, 'SAFE');
-    updateStats('SAFE');
-    return result;
-  }
-
-  const pageAnalysis = PhishGuardDetector.analyzePage(pageData);
-  const verdict = PhishGuardDetector.getVerdict(urlAnalysis.score, pageAnalysis.score);
-
-  const allFlags = [
-    ...urlAnalysis.flags.map(f => ({ type: 'url', text: f })),
-    ...pageAnalysis.flags.map(f => ({ type: 'page', text: f }))
-  ];
-
-  const result = {
-    verdict,
-    urlScore: urlAnalysis.score,
-    pageScore: pageAnalysis.score,
-    flags: allFlags,
-    url: urlString,
-    timestamp: Date.now()
-  };
-
-  if (pageAnalysis.flags.some(flag => /hindi|hinglish/i.test(flag))) {
-    stats.hindi++;
-  }
-
-  // Cache the result
-  rememberCache(urlString, result);
-
-  // Update badge
-  if (tabId) updateBadge(tabId, verdict);
-
-  // Update stats
-  updateStats(verdict);
-
-  return result;
+  pageStatsMap.set(tabId, {
+    links: Number(pageData?.linkCount ?? pageData?.totalLinks ?? 0),
+    externalLinks: Number(pageData?.externalLinkCount ?? 0),
+    ads: Number(pageData?.adCount ?? 0),
+    suspicious: Number(entry?.verdict === 'DANGEROUS' || entry?.verdict === 'SUSPICIOUS' ? 1 : 0),
+    protocol,
+    tlsValid: typeof pageData?.tlsValid === 'boolean' ? pageData.tlsValid : String(pageData?.protocol || '').toLowerCase() === 'https:',
+    hasSensitiveForms: Number(pageData?.sensitiveFormCount ?? (pageData?.hasPasswordField || pageData?.hasOTPField ? 1 : 0)),
+    cacheRemainingMs,
+    updatedAt: Date.now(),
+    url: urlString
+  });
 }
 
 function updateStats(verdict) {
@@ -222,7 +132,7 @@ function updateStats(verdict) {
   saveStats();
 }
 
-function sendTabMessage(tabId, message) {
+function safeSendTabMessage(tabId, message) {
   return new Promise((resolve) => {
     try {
       chrome.tabs.sendMessage(tabId, message, (response) => {
@@ -230,7 +140,6 @@ function sendTabMessage(tabId, message) {
           resolve(null);
           return;
         }
-
         resolve(response || null);
       });
     } catch {
@@ -239,102 +148,117 @@ function sendTabMessage(tabId, message) {
   });
 }
 
-// ── Hover link scan (lightweight, URL-only) ───────────────────
-async function scanHoverLink(urlString) {
-  if (!urlString) return null;
+function normalizeHeuristics(items) {
+  return Array.isArray(items) ? items.map((item) => (typeof item === 'string' ? item : String(item?.text || item || ''))).filter(Boolean) : [];
+}
 
-  const cached = verdictCache.get(urlString);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.result;
-  }
-
-  const urlAnalysis = PhishGuardDetector.analyzeURL(urlString);
-  const verdict = urlAnalysis.trusted ? 'SAFE' :
-    urlAnalysis.score >= 60 ? 'DANGEROUS' :
-    urlAnalysis.score >= 30 ? 'SUSPICIOUS' : 'SAFE';
-
+function buildEntry(urlString, trustScore, heuristics, pageStats, extra = {}) {
+  const verdict = PhishGuardDetector.getVerdict(trustScore);
   return {
-    verdict,
-    urlScore: urlAnalysis.score,
-    pageScore: 0,
-    flags: urlAnalysis.flags.map(f => ({ type: 'url', text: f })),
     url: urlString,
-    quickScan: true,
-    offlineMode: true
+    verdict,
+    trustScore: clamp(Math.round(trustScore || 0), 0, 100),
+    heuristics: normalizeHeuristics(heuristics),
+    pageStats: pageStats || {},
+    ts: Date.now(),
+    ...extra
   };
 }
 
-async function resolveRedirectUrl(urlString) {
-  if (!urlString) {
-    return { original: urlString, final_url: 'Could not resolve', verdict: 'SUSPICIOUS' };
+async function scoreFullPage(urlString, pageData) {
+  const urlAnalysis = PhishGuardDetector.analyzeURL(urlString);
+  const pageAnalysis = PhishGuardDetector.analyzePage(pageData);
+
+  const baseTrustScore = clamp(Math.round((Number(urlAnalysis.score || 0) + Number(pageAnalysis.score || 0)) / 2), 0, 100);
+  const hfTokenResult = await new Promise((resolve) => {
+    chrome.storage.local.get(['hf_token'], (result) => resolve(result?.hf_token || ''));
+  });
+
+  const boost = await mlBoost(urlString, pageData?.text || pageData?.bodyText || '', hfTokenResult);
+  const trustScore = clamp(baseTrustScore + Number(boost || 0), 0, 100);
+
+  const heuristics = [
+    ...urlAnalysis.heuristics,
+    ...pageAnalysis.heuristics
+  ];
+
+  if (boost !== 0) {
+    heuristics.push(boost > 0 ? 'ML boost' : 'ML penalty');
   }
 
-  try {
-    const firstAttempt = await fetch(urlString, {
-      method: 'HEAD',
-      redirect: 'follow',
-      cache: 'no-store'
-    });
+  const entry = buildEntry(urlString, trustScore, heuristics, null, {
+    rawRiskScore: clamp(100 - trustScore, 0, 100)
+  });
 
-    const finalUrl = String(firstAttempt.url || urlString);
-    const finalAnalysis = PhishGuardDetector.analyzeURL(finalUrl);
-    const verdict = finalAnalysis.trusted ? 'SAFE' :
-      finalAnalysis.score >= 60 ? 'DANGEROUS' :
-      finalAnalysis.score >= 30 ? 'SUSPICIOUS' : 'SAFE';
-
-    return {
-      original: urlString,
-      final_url: finalUrl,
-      verdict,
-      flags: finalAnalysis.flags
-    };
-  } catch {
-    try {
-      const secondAttempt = await fetch(urlString, {
-        method: 'GET',
-        redirect: 'follow',
-        cache: 'no-store'
-      });
-
-      const finalUrl = String(secondAttempt.url || urlString);
-      const finalAnalysis = PhishGuardDetector.analyzeURL(finalUrl);
-      const verdict = finalAnalysis.trusted ? 'SAFE' :
-        finalAnalysis.score >= 60 ? 'DANGEROUS' :
-        finalAnalysis.score >= 30 ? 'SUSPICIOUS' : 'SAFE';
-
-      return {
-        original: urlString,
-        final_url: finalUrl,
-        verdict,
-        flags: finalAnalysis.flags
-      };
-    } catch {
-      return { original: urlString, final_url: 'Could not resolve', verdict: 'SUSPICIOUS' };
-    }
-  }
+  return entry;
 }
 
-// ── Message handler ────────────────────────────────────────────
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+async function scanHoverLink(urlString) {
+  if (!urlString) return null;
 
+  const cached = getCacheEntry(urlString);
+  if (cached) {
+    return {
+      verdict: cached.verdict,
+      score: cached.trustScore,
+      heuristics: cached.heuristics || [],
+      url: urlString
+    };
+  }
+
+  const analysis = PhishGuardDetector.analyzeURL(urlString);
+  return {
+    verdict: analysis.verdict,
+    score: analysis.score,
+    heuristics: analysis.heuristics || [],
+    url: urlString
+  };
+}
+
+function getResponseForVerdict(urlString, entry) {
+  if (!entry) return null;
+
+  return {
+    verdict: entry.verdict,
+    score: entry.trustScore,
+    heuristics: entry.heuristics || [],
+    stats: entry.pageStats || {},
+    url: urlString
+  };
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'PAGE_SCAN_COMPLETE') {
     const { url, pageData } = message;
     const tabId = sender.tab?.id;
 
-    fullScan(url, pageData, tabId).then(result => {
-      storePageStats(tabId, url, pageData, result);
-      sendResponse({ success: true, result });
+    scoreFullPage(url, pageData).then((entry) => {
+      const pageStats = {
+        links: Number(pageData?.linkCount ?? pageData?.totalLinks ?? 0),
+        externalLinks: Number(pageData?.externalLinkCount ?? 0),
+        ads: Number(pageData?.adCount ?? 0),
+        suspicious: Number(entry.verdict === 'DANGEROUS' || entry.verdict === 'SUSPICIOUS' ? 1 : 0),
+        protocol: String(pageData?.protocol || 'https:').toUpperCase().replace(':', ''),
+        tlsValid: typeof pageData?.tlsValid === 'boolean' ? pageData.tlsValid : String(pageData?.protocol || '').toLowerCase() === 'https:',
+        hasSensitiveForms: Number(pageData?.sensitiveFormCount ?? (pageData?.hasPasswordField || pageData?.hasOTPField ? 1 : 0)),
+        cacheRemainingMs: 0
+      };
 
-      // If dangerous, notify content script to show overlay
-      if (result.verdict === 'DANGEROUS' && tabId) {
-        sendTabMessage(tabId, {
-          type: 'SHOW_WARNING',
-          result
-        });
+      entry.pageStats = pageStats;
+      rememberCache(url, entry);
+      if (tabId) {
+        buildPageStats(tabId, url, pageData, entry);
+        updateBadge(tabId, entry.verdict, entry.trustScore);
+      }
+      updateStats(entry.verdict);
+      sendResponse({ success: true, result: entry });
+
+      if (entry.verdict === 'DANGEROUS' && tabId) {
+        safeSendTabMessage(tabId, { type: 'SHOW_WARNING', result: entry });
       }
     });
 
-    return true; // async response
+    return true;
   }
 
   if (message.type === 'PAGE_SERP_STATS') {
@@ -357,44 +281,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'HOVER_LINK') {
-    scanHoverLink(message.url).then(result => {
-      sendResponse({ result });
+    scanHoverLink(message.url).then((result) => {
+      sendResponse(result ? {
+        verdict: result.verdict,
+        score: result.score,
+        heuristics: result.heuristics || [],
+        url: result.url
+      } : null);
     });
     return true;
   }
 
-  if (message.type === 'RESOLVE_REDIRECT') {
-    resolveRedirectUrl(message.url).then(result => {
-      sendResponse({ result });
-    });
-    return true;
-  }
-
-  if (message.type === 'GET_CURRENT_VERDICT' || message.type === 'GET_VERDICT') {
-    if (message.url) {
-      const cached = verdictCache.get(message.url);
-      sendResponse({ result: cached ? cached.result : null, stats });
-      return true;
-    }
-
-    const tabId = sender.tab?.id;
-    if (!tabId) { sendResponse({ result: null }); return; }
-
-    chrome.tabs.get(tabId, (tab) => {
-      const cached = verdictCache.get(tab.url);
-      sendResponse({ result: cached ? cached.result : null, stats });
-    });
+  if (message.type === 'GET_VERDICT') {
+    const cacheKey = message.url || sender.tab?.url || '';
+    const entry = getCacheEntry(cacheKey);
+    sendResponse(getResponseForVerdict(cacheKey, entry));
     return true;
   }
 
   if (message.type === 'GET_PAGE_STATS') {
     const tabId = message.tabId || sender.tab?.id;
     if (!tabId) {
-      sendResponse({ result: null });
+      sendResponse(null);
       return true;
     }
 
-    sendResponse({ result: pageStatsByTab.get(tabId) || null });
+    sendResponse(pageStatsMap.get(tabId) || null);
     return true;
   }
 
@@ -404,7 +316,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'REPORT_FALSE_POSITIVE') {
-    // In production: send to backend for model improvement
     console.log('False positive reported:', message.url);
     chrome.storage.local.get(['fp_reports'], (r) => {
       const reports = r.fp_reports || [];
@@ -423,28 +334,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// ── Tab navigation listener (trigger scan on page load) ────────
 chrome.webNavigation.onCompleted.addListener((details) => {
-  if (details.frameId !== 0) return; // main frame only
+  if (details.frameId !== 0) return;
   if (details.url.startsWith('chrome://') || details.url.startsWith('chrome-extension://')) return;
 
-  // Update badge to scanning while waiting for page data
   updateBadge(details.tabId, 'SCANNING');
 
-  // Request page data from content script
-  sendTabMessage(details.tabId, { type: 'REQUEST_PAGE_DATA' }).then((response) => {
+  safeSendTabMessage(details.tabId, { type: 'REQUEST_PAGE_DATA' }).then((response) => {
     if (response) return;
 
-    // Content script may not be ready yet; try URL-only scan
-    const urlAnalysis = PhishGuardDetector.analyzeURL(details.url);
-    const verdict = urlAnalysis.trusted ? 'SAFE' :
-      urlAnalysis.score >= 60 ? 'DANGEROUS' :
-      urlAnalysis.score >= 30 ? 'SUSPICIOUS' : 'SAFE';
-    updateBadge(details.tabId, verdict);
+    const fallback = PhishGuardDetector.analyzeURL(details.url);
+    updateBadge(details.tabId, fallback.verdict, fallback.score);
   });
 });
 
-// ── Tab change: restore badge from cache ───────────────────────
 chrome.tabs.onActivated.addListener(({ tabId }) => {
   chrome.tabs.get(tabId, (tab) => {
     if (!tab || !tab.url) return;
@@ -455,9 +358,9 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
       return;
     }
 
-    const cached = verdictCache.get(tab.url);
+    const cached = getCacheEntry(tab.url);
     if (cached) {
-      updateBadge(tabId, cached.result.verdict);
+      updateBadge(tabId, cached.verdict, cached.trustScore);
     } else {
       updateBadge(tabId, 'UNKNOWN');
     }

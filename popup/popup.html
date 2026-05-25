@@ -18,7 +18,7 @@
       </div>
       <div class="pg-live-pill" id="livePill">
         <span class="pg-live-dot" id="liveDot"></span>
-        <span id="liveLabel">Offline</span>
+        <span id="liveLabel">Live</span>
       </div>
     </header>
 
@@ -45,18 +45,18 @@
             <div class="pg-health-bar-marker" id="healthBarMarker" style="left:0%"></div>
           </div>
           <div class="pg-health-bar-labels">
-            <span class="pg-hbl-safe">Safe</span>
-            <span class="pg-hbl-suspicious">Suspicious</span>
-            <span class="pg-hbl-danger">Dangerous</span>
+            <span class="pg-hbl-safe">SAFE ZONE</span>
+            <span class="pg-hbl-suspicious">SUSPICIOUS</span>
+            <span class="pg-hbl-danger">DANGEROUS</span>
           </div>
           <div class="pg-health-bar-zones" aria-hidden="true">
-            <span class="pg-hbz pg-hbz-safe">0–40</span>
-            <span class="pg-hbz pg-hbz-suspicious">50–65</span>
-            <span class="pg-hbz pg-hbz-danger">65–100</span>
+            <span class="pg-hbz pg-hbz-safe">71–100</span>
+            <span class="pg-hbz pg-hbz-suspicious">45–70</span>
+            <span class="pg-hbz pg-hbz-danger">0–44</span>
           </div>
           <div class="pg-health-bar-pct" id="healthBarPct">
             <span id="healthBarPctValue">0%</span>
-            <span class="pg-health-bar-pct-label" id="healthBarPctLabel">Risk Score</span>
+            <span class="pg-health-bar-pct-label" id="healthBarPctLabel">Trust Score</span>
           </div>
         </div>
       </section>
@@ -194,6 +194,16 @@
           <span></span>
         </label>
       </div>
+
+      <div class="pg-setting-row pg-hf-row">
+        <div style="width:100%;">
+          <div class="pg-setting-label">Hugging Face API token</div>
+          <div class="pg-setting-copy">Optional ML boost for full page scans</div>
+          <input type="password" id="hfTokenInput" class="pg-hf-input" placeholder="hf_..." />
+        </div>
+      </div>
+
+      <button class="pg-settings-save pg-hf-save" id="saveHfToken" type="button">Save token</button>
 
       <button class="pg-settings-save" id="settingsSave" type="button">Done</button>
     </section>
