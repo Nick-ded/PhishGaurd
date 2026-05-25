@@ -220,6 +220,7 @@ async function fullScan(urlString, pageData, tabId) {
 
   const result = {
     verdict,
+    score: urlAnalysis.score,
     urlScore: urlAnalysis.score,
     pageScore: pageAnalysis.score,
     threatIntel: threatResult || null,
@@ -296,6 +297,7 @@ async function scanHoverLink(urlString) {
 
   const result = {
     verdict,
+    score: urlAnalysis.score,
     urlScore: urlAnalysis.score,
     pageScore: 0,
     threatIntel: threatResult || null,

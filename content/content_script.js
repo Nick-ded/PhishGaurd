@@ -488,46 +488,70 @@
     return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 4 5 8v8l7 4 7-4V8l-7-4Z"/></svg>';
   }
 
+  // ── Shared safety score conversion (matches popup.js toSafetyScore exactly) ──
+  // Input:  threatScore 0–100 (0=clean, 100=dangerous), verdict, urlSeed string
+  // Output: safetyScore 0–100 (100=safest, 0=most dangerous)
+  //   SAFE/UNKNOWN  → 70–99 (hash-seeded from URL for consistency)
+  //   SUSPICIOUS    → 45–69 (inverted from threat 25–54)
+  //   DANGEROUS     → 0–44  (inverted from threat 55–100)
+  function toSafetyScore(threatScore, verdict, urlSeed) {
+    if (verdict === 'SAFE' || verdict === 'UNKNOWN' || !verdict) {
+      let hash = 0;
+      const seed = String(urlSeed || 'default');
+      for (let i = 0; i < seed.length; i++) {
+        hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+      }
+      return 70 + (hash % 30); // 70–99
+    }
+    if (verdict === 'SUSPICIOUS') {
+      const mapped = Math.round(69 - ((threatScore - 25) / 29) * 24);
+      return Math.max(45, Math.min(69, mapped));
+    }
+    // DANGEROUS
+    const mapped = Math.round(44 - ((threatScore - 55) / 45) * 44);
+    return Math.max(0, Math.min(44, mapped));
+  }
+
   // ── Mock/demo data for instant results on well-known sites ──
-  // Safe sites: safety score 100. Unsafe/piracy: safety score ≤ 20.
+  // No hardcoded safetyScore — toSafetyScore() computes it from score+verdict
   const DEMO_SITE_DATA = {
-    // Safe trusted sites — score 100
-    'google.com':       { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Google LLC'] },
-    'youtube.com':      { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Google LLC'] },
-    'facebook.com':     { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Meta Platforms'] },
-    'instagram.com':    { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Meta Platforms'] },
-    'whatsapp.com':     { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Meta Platforms'] },
-    'twitter.com':      { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — X Corp'] },
-    'x.com':            { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — X Corp'] },
-    'github.com':       { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Microsoft/GitHub'] },
-    'microsoft.com':    { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Microsoft Corp'] },
-    'amazon.com':       { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Amazon Inc'] },
-    'amazon.in':        { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Amazon India'] },
-    'flipkart.com':     { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Flipkart'] },
-    'netflix.com':      { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Netflix Inc'] },
-    'linkedin.com':     { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — LinkedIn/Microsoft'] },
-    'wikipedia.org':    { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Wikimedia Foundation'] },
-    'apple.com':        { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Apple Inc'] },
-    'paytm.com':        { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Paytm/One97'] },
-    'phonepe.com':      { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — PhonePe Pvt Ltd'] },
-    'sbi.co.in':        { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — State Bank of India'] },
-    'hdfcbank.com':     { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — HDFC Bank'] },
-    'icicibank.com':    { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — ICICI Bank'] },
-    'irctc.co.in':      { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Indian Railways'] },
-    'reddit.com':       { verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Reddit Inc'] },
-    'stackoverflow.com':{ verdict: 'SAFE', score: 0, safetyScore: 100, flags: ['Verified trusted domain — Stack Exchange'] },
-    // Unsafe/piracy sites — score ≤ 20
-    'filmyzilla.com':   { verdict: 'DANGEROUS', score: 100, safetyScore: 5,  flags: ['Known piracy/illegal streaming site', 'Blocked by Cloudflare for copyright violations'] },
-    'tamilrockers.ws':  { verdict: 'DANGEROUS', score: 100, safetyScore: 3,  flags: ['Known piracy site — distributes copyrighted content illegally'] },
-    'movierulz.tc':     { verdict: 'DANGEROUS', score: 100, safetyScore: 4,  flags: ['Known piracy/illegal streaming site'] },
-    'netmirror.plus':   { verdict: 'DANGEROUS', score: 100, safetyScore: 2,  flags: ['Blocked by Cloudflare for phishing/piracy', 'Known malicious domain'] },
-    'soap2day.to':      { verdict: 'DANGEROUS', score: 100, safetyScore: 6,  flags: ['Known illegal streaming site', 'Malware distribution risk'] },
-    'thepiratebay.org': { verdict: 'DANGEROUS', score: 100, safetyScore: 8,  flags: ['Known torrent/piracy site', 'Legal risk in most countries'] },
-    'vegamovies.nl':    { verdict: 'DANGEROUS', score: 100, safetyScore: 5,  flags: ['Known piracy/illegal streaming site'] },
-    'bollyflix.com':    { verdict: 'DANGEROUS', score: 100, safetyScore: 4,  flags: ['Known piracy/illegal streaming site'] },
-    'kuttymovies.com':  { verdict: 'DANGEROUS', score: 100, safetyScore: 3,  flags: ['Known piracy site — Tamil movies'] },
-    'fmovies.to':       { verdict: 'DANGEROUS', score: 100, safetyScore: 7,  flags: ['Known illegal streaming site', 'Adware/malware risk'] },
-    'fitgirl-repacks.site': { verdict: 'SUSPICIOUS', score: 40, safetyScore: 18, flags: ['Suspicious TLD (.site)', 'Distributes pirated game repacks', 'Unofficial software distribution'] }
+    // Safe trusted sites
+    'google.com':       { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Google LLC'] },
+    'youtube.com':      { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Google LLC'] },
+    'facebook.com':     { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Meta Platforms'] },
+    'instagram.com':    { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Meta Platforms'] },
+    'whatsapp.com':     { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Meta Platforms'] },
+    'twitter.com':      { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — X Corp'] },
+    'x.com':            { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — X Corp'] },
+    'github.com':       { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Microsoft/GitHub'] },
+    'microsoft.com':    { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Microsoft Corp'] },
+    'amazon.com':       { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Amazon Inc'] },
+    'amazon.in':        { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Amazon India'] },
+    'flipkart.com':     { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Flipkart'] },
+    'netflix.com':      { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Netflix Inc'] },
+    'linkedin.com':     { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — LinkedIn/Microsoft'] },
+    'wikipedia.org':    { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Wikimedia Foundation'] },
+    'apple.com':        { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Apple Inc'] },
+    'paytm.com':        { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Paytm/One97'] },
+    'phonepe.com':      { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — PhonePe Pvt Ltd'] },
+    'sbi.co.in':        { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — State Bank of India'] },
+    'hdfcbank.com':     { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — HDFC Bank'] },
+    'icicibank.com':    { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — ICICI Bank'] },
+    'irctc.co.in':      { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Indian Railways'] },
+    'reddit.com':       { verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Reddit Inc'] },
+    'stackoverflow.com':{ verdict: 'SAFE', score: 0, flags: ['Verified trusted domain — Stack Exchange'] },
+    // Unsafe/piracy sites — threat score 100 → toSafetyScore gives 0–44
+    'filmyzilla.com':   { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy/illegal streaming site', 'Blocked by Cloudflare for copyright violations'] },
+    'tamilrockers.ws':  { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy site — distributes copyrighted content illegally'] },
+    'movierulz.tc':     { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy/illegal streaming site'] },
+    'netmirror.plus':   { verdict: 'DANGEROUS', score: 100, flags: ['Blocked by Cloudflare for phishing/piracy', 'Known malicious domain'] },
+    'soap2day.to':      { verdict: 'DANGEROUS', score: 100, flags: ['Known illegal streaming site', 'Malware distribution risk'] },
+    'thepiratebay.org': { verdict: 'DANGEROUS', score: 100, flags: ['Known torrent/piracy site', 'Legal risk in most countries'] },
+    'vegamovies.nl':    { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy/illegal streaming site'] },
+    'bollyflix.com':    { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy/illegal streaming site'] },
+    'kuttymovies.com':  { verdict: 'DANGEROUS', score: 100, flags: ['Known piracy site — Tamil movies'] },
+    'fmovies.to':       { verdict: 'DANGEROUS', score: 100, flags: ['Known illegal streaming site', 'Adware/malware risk'] },
+    'fitgirl-repacks.site': { verdict: 'SUSPICIOUS', score: 40, flags: ['Suspicious TLD (.site)', 'Distributes pirated game repacks', 'Unofficial software distribution'] }
   };
 
   function getDemoData(urlString) {
@@ -1255,24 +1279,10 @@
     if (!hoverPopupRefs) return;
 
     const verdict = state.verdict || 'SAFE';
-    // Use safetyScore if provided (demo data), otherwise convert raw threat score
-    let displayScore;
-    if (typeof state.safetyScore === 'number') {
-      displayScore = state.safetyScore;
-    } else {
-      const rawScore = Math.max(0, Math.min(100, Number(state.score || 0)));
-      if (verdict === 'SAFE') {
-        // Seed consistent 70-99 from URL
-        let hash = 0;
-        const seed = String(state.url || state.domain || '');
-        for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-        displayScore = 70 + (hash % 30);
-      } else if (verdict === 'SUSPICIOUS') {
-        displayScore = Math.max(21, Math.min(44, Math.round(44 - ((rawScore - 25) / 30) * 23)));
-      } else {
-        displayScore = Math.max(0, Math.min(20, Math.round(20 - ((rawScore - 55) / 45) * 20)));
-      }
-    }
+    // Normalize: service_worker returns urlScore, quickURLScan returns score
+    const rawThreatScore = Math.max(0, Math.min(100, Number(state.score ?? state.urlScore ?? 0)));
+    // Use the SAME toSafetyScore formula as popup.js — single source of truth
+    const displayScore = toSafetyScore(rawThreatScore, verdict, state.url || state.domain || '');
 
     const domain = state.domain || state.url || '';
     const reasons = Array.isArray(state.reasons) ? state.reasons : [];
@@ -1396,7 +1406,7 @@
 
     renderHoverPopup({
       verdict,
-      score,
+      score: score ?? baseResult.urlScore ?? 0,
       domain: getDisplayDomain(urlString),
       url: urlString,
       reasons,
@@ -1572,12 +1582,8 @@
     const score = Math.max(0, Math.min(100, Number(result.score || result.urlScore || 0)));
     const alternatives = getSafeAlternatives(domain);
 
-    // Convert threat score to safety score for display (inverted)
-    const safetyScore = verdict === 'DANGEROUS'
-      ? Math.round(44 - ((score - 55) / 45) * 44)
-      : verdict === 'SUSPICIOUS'
-      ? Math.round(69 - ((score - 25) / 29) * 24)
-      : 70;
+    // Use the shared toSafetyScore — same formula as popup.js and hover popup
+    const safetyScore = toSafetyScore(score, verdict, result.url || '');
 
     const verdictConfig = {
       DANGEROUS: {
