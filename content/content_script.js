@@ -457,9 +457,9 @@
   }
 
   function getVerdictBadgeText(verdict) {
-    if (verdict === 'DANGEROUS') return '✕ DANGER';
+    if (verdict === 'DANGEROUS') return '✕';
     if (verdict === 'SUSPICIOUS') return '⚠ SUSP';
-    return 'SAFE';
+    return '✓';
   }
 
   function getVerdictIconSvg(tier) {
@@ -674,6 +674,7 @@
 
     const wrap = document.createElement('span');
     wrap.className = 'pg-link-badge-wrap';
+    wrap.tabIndex = 0;
 
     const badge = document.createElement('span');
     badge.className = `pg-badge pg-${tier}`;
@@ -698,6 +699,19 @@
 
     wrap.appendChild(badge);
     wrap.appendChild(tooltip);
+
+    const showTooltip = () => {
+      wrap.classList.add('pg-tooltip-open');
+    };
+
+    const hideTooltip = () => {
+      wrap.classList.remove('pg-tooltip-open');
+    };
+
+    badge.addEventListener('pointerenter', showTooltip);
+    badge.addEventListener('focus', showTooltip);
+    wrap.addEventListener('pointerleave', hideTooltip);
+    wrap.addEventListener('blur', hideTooltip);
     return wrap;
   }
 
