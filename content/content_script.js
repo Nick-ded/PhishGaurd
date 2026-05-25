@@ -33,11 +33,23 @@
 
   const REDIRECT_PARAM_PATTERNS = ['?url=', '?redirect=', '?goto=', '?link='];
 
+  const SAFE_ALTERNATIVES = {
+    streaming: ['netflix.com', 'primevideo.com', 'hotstar.com', 'youtube.com', 'sonyliv.com', 'zee5.com'],
+    banking: ['sbi.co.in', 'hdfcbank.com', 'icicibank.com', 'axisbank.com', 'kotak.com'],
+    shopping: ['amazon.in', 'flipkart.com', 'myntra.com', 'meesho.com'],
+    payment: ['paytm.com', 'phonepe.com', 'googlepay.app', 'whatsapp.com'],
+    social: ['facebook.com', 'instagram.com', 'twitter.com', 'youtube.com', 'linkedin.com'],
+    email: ['gmail.com', 'outlook.com', 'mail.yahoo.com'],
+    dating: ['bumble.com', 'hinge.app'],
+    gaming: ['epicgames.com', 'store.steampowered.com', 'ubisoft.com']
+  };
+
   const hoverCache = new Map();
   const redirectCache = new Map();
 
   let currentPageResult = null;
   let warningOverlayShown = false;
+  let extensionSettings = { hoverScan: true, overlay: true };
 
   let hoverPopupHost = null;
   let hoverPopupRoot = null;
@@ -472,6 +484,36 @@
     }
 
     return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 4 5 8v8l7 4 7-4V8l-7-4Z"/></svg>';
+  }
+
+  function loadExtensionSettings() {
+    chrome.storage.local.get(['pg_settings'], (result) => {
+      if (result && result.pg_settings) {
+        extensionSettings = { ...extensionSettings, ...result.pg_settings };
+      }
+    });
+  }
+
+  function getSafeAlternatives(domain) {
+    const hostLower = String(domain || '').toLowerCase();
+    for (const [category, domains] of Object.entries(SAFE_ALTERNATIVES)) {
+      if (domains.some((d) => hostLower.includes(d))) {
+        return domains.filter((d) => !hostLower.includes(d)).slice(0, 3);
+      }
+      if (category === 'streaming' && (hostLower.includes('movie') || hostLower.includes('film') || hostLower.includes('watch') || hostLower.includes('watch') || hostLower.includes('series'))) {
+        return SAFE_ALTERNATIVES.streaming;
+      }
+      if (category === 'banking' && (hostLower.includes('bank') || hostLower.includes('kyc'))) {
+        return SAFE_ALTERNATIVES.banking;
+      }
+      if (category === 'shopping' && (hostLower.includes('shop') || hostLower.includes('store') || hostLower.includes('buy'))) {
+        return SAFE_ALTERNATIVES.shopping;
+      }
+      if (category === 'payment' && (hostLower.includes('pay') || hostLower.includes('wallet'))) {
+        return SAFE_ALTERNATIVES.payment;
+      }
+    }
+    return [];
   }
 
   function normalizeFlagText(flag) {
@@ -1351,9 +1393,10 @@
     const domain = (() => { try { return new URL(result.url).hostname; } catch { return result.url; } })();
     const flags = (result.flags || []).slice(0, 5).map((flag) => typeof flag === 'object' ? flag.text : flag);
     const score = Math.max(0, Math.min(100, Number(result.score || result.urlScore || 0)));
+    const alternatives = getSafeAlternatives(domain);
 
     // Convert threat score to safety score for display (inverted)
-    const safetyScore = verdict === 'DANGEROUS' 
+    const safetyScore = verdict === 'DANGEROUS'
       ? Math.round(44 - ((score - 55) / 45) * 44)
       : verdict === 'SUSPICIOUS'
       ? Math.round(69 - ((score - 25) / 29) * 24)
@@ -1378,6 +1421,17 @@
 
     const config = verdictConfig[verdict] || verdictConfig.DANGEROUS;
 
+    const alternativesHtml = alternatives.length > 0 ? `
+      <div class="pg-ov-alternatives">
+        <div class="pg-ov-alternatives-title">✅ Safer Alternatives:</div>
+        ${alternatives.map((alt) => `
+          <a href="https://${alt}" target="_blank" rel="noopener noreferrer" class="pg-ov-alt-link">
+            ${escHtml(alt)}
+          </a>
+        `).join('')}
+      </div>
+    ` : '';
+
     const overlay = document.createElement('div');
     overlay.id = 'pg-page-overlay';
     overlay.innerHTML = `
@@ -1398,7 +1452,7 @@
           <h2 class="pg-ov-headline">${config.headline}</h2>
           <div class="pg-ov-domain-label">Blocked website:</div>
           <div class="pg-ov-domain">${escHtml(domain)}</div>
-          
+
           <div class="pg-ov-score-section">
             <div class="pg-ov-score-row">
               <span class="pg-ov-score-label">Safety Score</span>
@@ -1422,6 +1476,8 @@
           ` : ''}
 
           <div class="pg-ov-advice">${config.advice}</div>
+
+          ${alternativesHtml}
         </div>
 
         <div class="pg-ov-actions">
@@ -1463,7 +1519,9 @@
     if (GOOGLE_SERP_RE.test(location.href)) return;
 
     document.querySelectorAll('a[href]').forEach((link) => {
-      attachLinkHover(link);
+      if (extensionSettings.hoverScan) {
+        attachLinkHover(link);
+      }
       decorateLink(link);
     });
   }
@@ -1556,6 +1614,7 @@
   });
 
   function init() {
+    loadExtensionSettings();
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {
         observeLinks();

@@ -674,3 +674,42 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* ── Safe Alternatives Section ──────────────────────────────── */
+.pg-ov-alternatives {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.22);
+  border-radius: 8px;
+}
+
+.pg-ov-alternatives-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: inherit;
+}
+
+.pg-ov-alt-link {
+  display: inline-block;
+  margin-right: 8px;
+  margin-bottom: 6px;
+  padding: 6px 12px;
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  text-decoration: none;
+  border-radius: 6px;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.pg-ov-alt-link:hover {
+  background: rgba(34, 197, 94, 0.22);
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #16a34a;
+}
+
