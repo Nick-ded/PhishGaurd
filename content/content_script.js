@@ -33,68 +33,131 @@
 
   const REDIRECT_PARAM_PATTERNS = ['?url=', '?redirect=', '?goto=', '?link='];
 
-  // ── Safe alternatives — real, free, legal options ────────────
+  // ── Safe alternatives — real, free & paid legal options ─────
   // Each entry: { name, url, free: true/false, note }
-  // Shown when user visits a dangerous/suspicious site
   const SAFE_ALTERNATIVES = {
-    // Piracy / illegal streaming → free legal streaming
     streaming: [
-      { name: 'YouTube', url: 'youtube.com', free: true, note: 'Free movies & shows' },
-      { name: 'Pluto TV', url: 'pluto.tv', free: true, note: '100% free, no signup' },
-      { name: 'Tubi', url: 'tubitv.com', free: true, note: 'Free movies & TV' },
-      { name: 'Crackle', url: 'crackle.com', free: true, note: 'Free Sony movies' },
-      { name: 'MX Player', url: 'mxplayer.in', free: true, note: 'Free Indian content' },
-      { name: 'JioCinema', url: 'jiocinema.com', free: true, note: 'Free with Jio' },
-      { name: 'Hotstar', url: 'hotstar.com', free: false, note: 'Paid — Disney+ content' },
-      { name: 'SonyLIV', url: 'sonyliv.com', free: false, note: 'Paid — Sony content' }
+      { name: 'YouTube',       url: 'youtube.com',              free: true,  note: 'Free movies & shows' },
+      { name: 'Pluto TV',      url: 'pluto.tv',                 free: true,  note: '100% free, no signup needed' },
+      { name: 'Tubi',          url: 'tubitv.com',               free: true,  note: 'Free movies & TV shows' },
+      { name: 'MX Player',     url: 'mxplayer.in',              free: true,  note: 'Free Indian movies & web series' },
+      { name: 'JioCinema',     url: 'jiocinema.com',            free: true,  note: 'Free with Jio SIM' },
+      { name: 'Crackle',       url: 'crackle.com',              free: true,  note: 'Free Sony movies' },
+      { name: 'Hotstar',       url: 'hotstar.com',              free: false, note: 'Paid — Disney+ & sports' },
+      { name: 'Netflix',       url: 'netflix.com',              free: false, note: 'Paid — premium streaming' },
+      { name: 'Prime Video',   url: 'primevideo.com',           free: false, note: 'Paid — Amazon originals' },
+      { name: 'SonyLIV',       url: 'sonyliv.com',              free: false, note: 'Paid — Sony & sports' }
     ],
-    // Piracy game repacks → free legal game sources
     gaming: [
-      { name: 'Epic Games', url: 'store.epicgames.com', free: true, note: 'Free games weekly' },
-      { name: 'Steam', url: 'store.steampowered.com', free: false, note: 'Paid — largest PC store' },
-      { name: 'GOG', url: 'gog.com', free: true, note: 'Free games + DRM-free' },
-      { name: 'Itch.io', url: 'itch.io', free: true, note: 'Thousands of free indie games' },
-      { name: 'Xbox Game Pass', url: 'xbox.com/game-pass', free: false, note: 'Subscription — 100s of games' },
-      { name: 'Humble Bundle', url: 'humblebundle.com', free: true, note: 'Pay-what-you-want bundles' }
+      { name: 'Epic Games',    url: 'store.epicgames.com',      free: true,  note: 'Free games every week' },
+      { name: 'GOG',           url: 'gog.com',                  free: true,  note: 'Free games + DRM-free' },
+      { name: 'Itch.io',       url: 'itch.io',                  free: true,  note: 'Thousands of free indie games' },
+      { name: 'Humble Bundle', url: 'humblebundle.com',         free: true,  note: 'Pay-what-you-want bundles' },
+      { name: 'Steam',         url: 'store.steampowered.com',   free: false, note: 'Largest PC game store' },
+      { name: 'Xbox Game Pass',url: 'xbox.com/game-pass',       free: false, note: 'Subscription — 100s of games' }
     ],
-    // Torrent / piracy general
     torrent: [
-      { name: 'Internet Archive', url: 'archive.org', free: true, note: 'Free legal downloads' },
-      { name: 'Project Gutenberg', url: 'gutenberg.org', free: true, note: 'Free ebooks' },
-      { name: 'Open Library', url: 'openlibrary.org', free: true, note: 'Free book borrowing' }
+      { name: 'Internet Archive', url: 'archive.org',           free: true,  note: 'Free legal downloads & old software' },
+      { name: 'Project Gutenberg',url: 'gutenberg.org',         free: true,  note: '70,000+ free ebooks' },
+      { name: 'Open Library',     url: 'openlibrary.org',       free: true,  note: 'Free book borrowing' },
+      { name: 'LibriVox',         url: 'librivox.org',          free: true,  note: 'Free public domain audiobooks' }
     ],
-    // Banking / KYC phishing
-    banking: [
-      { name: 'SBI Official', url: 'sbi.co.in', free: true, note: 'Official SBI website' },
-      { name: 'HDFC Bank', url: 'hdfcbank.com', free: true, note: 'Official HDFC website' },
-      { name: 'ICICI Bank', url: 'icicibank.com', free: true, note: 'Official ICICI website' },
-      { name: 'Axis Bank', url: 'axisbank.com', free: true, note: 'Official Axis website' }
-    ],
-    // Shopping
-    shopping: [
-      { name: 'Amazon India', url: 'amazon.in', free: true, note: 'Trusted marketplace' },
-      { name: 'Flipkart', url: 'flipkart.com', free: true, note: 'Trusted marketplace' },
-      { name: 'Meesho', url: 'meesho.com', free: true, note: 'Budget shopping' },
-      { name: 'Myntra', url: 'myntra.com', free: true, note: 'Fashion & lifestyle' }
-    ],
-    // Payment / UPI phishing
-    payment: [
-      { name: 'Paytm', url: 'paytm.com', free: true, note: 'Official Paytm app' },
-      { name: 'PhonePe', url: 'phonepe.com', free: true, note: 'Official PhonePe' },
-      { name: 'Google Pay', url: 'pay.google.com', free: true, note: 'Official Google Pay' }
-    ],
-    // Social media
-    social: [
-      { name: 'Instagram', url: 'instagram.com', free: true, note: 'Official Instagram' },
-      { name: 'Facebook', url: 'facebook.com', free: true, note: 'Official Facebook' },
-      { name: 'Twitter / X', url: 'x.com', free: true, note: 'Official X' }
-    ],
-    // Music piracy
     music: [
-      { name: 'Spotify', url: 'spotify.com', free: true, note: 'Free tier available' },
-      { name: 'JioSaavn', url: 'jiosaavn.com', free: true, note: 'Free Indian music' },
-      { name: 'Gaana', url: 'gaana.com', free: true, note: 'Free Indian music' },
-      { name: 'YouTube Music', url: 'music.youtube.com', free: true, note: 'Free with ads' }
+      { name: 'Spotify',       url: 'spotify.com',              free: true,  note: 'Free tier with ads' },
+      { name: 'JioSaavn',      url: 'jiosaavn.com',             free: true,  note: 'Free Indian & global music' },
+      { name: 'Gaana',         url: 'gaana.com',                free: true,  note: 'Free Indian music' },
+      { name: 'YouTube Music', url: 'music.youtube.com',        free: true,  note: 'Free with ads' },
+      { name: 'Wynk Music',    url: 'wynk.in',                  free: true,  note: 'Free with Airtel' },
+      { name: 'Apple Music',   url: 'music.apple.com',          free: false, note: 'Paid — high quality audio' }
+    ],
+    banking: [
+      { name: 'SBI Official',  url: 'sbi.co.in',                free: true,  note: 'Official State Bank of India' },
+      { name: 'HDFC Bank',     url: 'hdfcbank.com',             free: true,  note: 'Official HDFC Bank' },
+      { name: 'ICICI Bank',    url: 'icicibank.com',            free: true,  note: 'Official ICICI Bank' },
+      { name: 'Axis Bank',     url: 'axisbank.com',             free: true,  note: 'Official Axis Bank' },
+      { name: 'Kotak Bank',    url: 'kotak.com',                free: true,  note: 'Official Kotak Mahindra' }
+    ],
+    shopping: [
+      { name: 'Amazon India',  url: 'amazon.in',                free: true,  note: 'Trusted — largest marketplace' },
+      { name: 'Flipkart',      url: 'flipkart.com',             free: true,  note: 'Trusted Indian marketplace' },
+      { name: 'Meesho',        url: 'meesho.com',               free: true,  note: 'Budget-friendly shopping' },
+      { name: 'Myntra',        url: 'myntra.com',               free: true,  note: 'Fashion & lifestyle' },
+      { name: 'Nykaa',         url: 'nykaa.com',                free: true,  note: 'Beauty & wellness' },
+      { name: 'Snapdeal',      url: 'snapdeal.com',             free: true,  note: 'Deals & discounts' }
+    ],
+    payment: [
+      { name: 'Paytm',         url: 'paytm.com',                free: true,  note: 'Official Paytm — RBI regulated' },
+      { name: 'PhonePe',       url: 'phonepe.com',              free: true,  note: 'Official PhonePe — UPI' },
+      { name: 'Google Pay',    url: 'pay.google.com',           free: true,  note: 'Official Google Pay — UPI' },
+      { name: 'BHIM UPI',      url: 'bhimupi.org.in',           free: true,  note: 'Official NPCI BHIM app' }
+    ],
+    social: [
+      { name: 'Instagram',     url: 'instagram.com',            free: true,  note: 'Official Instagram' },
+      { name: 'Facebook',      url: 'facebook.com',             free: true,  note: 'Official Facebook' },
+      { name: 'Twitter / X',   url: 'x.com',                    free: true,  note: 'Official X (Twitter)' },
+      { name: 'LinkedIn',      url: 'linkedin.com',             free: true,  note: 'Official LinkedIn' },
+      { name: 'WhatsApp',      url: 'web.whatsapp.com',         free: true,  note: 'Official WhatsApp Web' }
+    ],
+    email: [
+      { name: 'Gmail',         url: 'mail.google.com',          free: true,  note: 'Official Google Gmail' },
+      { name: 'Outlook',       url: 'outlook.live.com',         free: true,  note: 'Official Microsoft Outlook' },
+      { name: 'Yahoo Mail',    url: 'mail.yahoo.com',           free: true,  note: 'Official Yahoo Mail' },
+      { name: 'ProtonMail',    url: 'proton.me',                free: true,  note: 'Free encrypted email' }
+    ],
+    jobs: [
+      { name: 'LinkedIn Jobs', url: 'linkedin.com/jobs',        free: true,  note: 'Verified job listings' },
+      { name: 'Naukri',        url: 'naukri.com',               free: true,  note: "India's largest job portal" },
+      { name: 'Indeed',        url: 'indeed.co.in',             free: true,  note: 'Free job search' },
+      { name: 'Internshala',   url: 'internshala.com',          free: true,  note: 'Free internships & jobs' },
+      { name: 'Shine',         url: 'shine.com',                free: true,  note: 'Free job portal' }
+    ],
+    loans: [
+      { name: 'BankBazaar',    url: 'bankbazaar.com',           free: true,  note: 'Compare loans safely' },
+      { name: 'Paisabazaar',   url: 'paisabazaar.com',          free: true,  note: 'Compare financial products' },
+      { name: 'CIBIL',         url: 'cibil.com',                free: true,  note: 'Official credit score check' }
+    ],
+    government: [
+      { name: 'India.gov.in',  url: 'india.gov.in',             free: true,  note: 'Official Indian government portal' },
+      { name: 'IRCTC',         url: 'irctc.co.in',              free: true,  note: 'Official Indian Railways booking' },
+      { name: 'UIDAI / Aadhaar',url: 'uidai.gov.in',            free: true,  note: 'Official Aadhaar portal' },
+      { name: 'Income Tax',    url: 'incometax.gov.in',         free: true,  note: 'Official IT filing portal' },
+      { name: 'DigiLocker',    url: 'digilocker.gov.in',        free: true,  note: 'Official document storage' }
+    ],
+    dating: [
+      { name: 'Bumble',        url: 'bumble.com',               free: true,  note: 'Safe dating app' },
+      { name: 'Hinge',         url: 'hinge.co',                 free: true,  note: 'Relationship-focused app' },
+      { name: 'TrulyMadly',    url: 'trulymadly.com',           free: true,  note: 'Indian dating app' }
+    ],
+    news: [
+      { name: 'NDTV',          url: 'ndtv.com',                 free: true,  note: 'Trusted Indian news' },
+      { name: 'The Hindu',     url: 'thehindu.com',             free: true,  note: 'Trusted Indian newspaper' },
+      { name: 'BBC News',      url: 'bbc.com/news',             free: true,  note: 'Trusted international news' },
+      { name: 'Reuters',       url: 'reuters.com',              free: true,  note: 'Trusted wire service' }
+    ],
+    crypto: [
+      { name: 'CoinDCX',       url: 'coindcx.com',              free: true,  note: 'RBI-compliant Indian exchange' },
+      { name: 'WazirX',        url: 'wazirx.com',               free: true,  note: 'Indian crypto exchange' },
+      { name: 'Zerodha',       url: 'zerodha.com',              free: true,  note: 'SEBI-registered broker' },
+      { name: 'Groww',         url: 'groww.in',                 free: true,  note: 'SEBI-registered investment app' }
+    ],
+    education: [
+      { name: 'Coursera',      url: 'coursera.org',             free: true,  note: 'Free courses with certificates' },
+      { name: 'Khan Academy',  url: 'khanacademy.org',          free: true,  note: '100% free education' },
+      { name: 'NPTEL',         url: 'nptel.ac.in',              free: true,  note: 'Free IIT/IISc courses' },
+      { name: 'edX',           url: 'edx.org',                  free: true,  note: 'Free university courses' },
+      { name: 'YouTube',       url: 'youtube.com',              free: true,  note: 'Free tutorials on everything' }
+    ],
+    vpn: [
+      { name: 'ProtonVPN',     url: 'protonvpn.com',            free: true,  note: 'Free tier — no logs' },
+      { name: 'Windscribe',    url: 'windscribe.com',           free: true,  note: 'Free 10GB/month' },
+      { name: 'Cloudflare WARP',url: '1.1.1.1',                 free: true,  note: 'Free fast DNS + VPN' }
+    ],
+    software: [
+      { name: 'Microsoft Store',url: 'microsoft.com/store',     free: true,  note: 'Official Windows apps' },
+      { name: 'Google Play',   url: 'play.google.com',          free: true,  note: 'Official Android apps' },
+      { name: 'Apple App Store',url: 'apps.apple.com',          free: true,  note: 'Official iOS apps' },
+      { name: 'Ninite',        url: 'ninite.com',               free: true,  note: 'Safe Windows software installer' },
+      { name: 'GitHub',        url: 'github.com',               free: true,  note: 'Official open-source software' }
     ]
   };
 
@@ -102,43 +165,45 @@
   function getSafeAlternatives(domain) {
     const h = String(domain || '').toLowerCase();
 
-    // Piracy game repacks / cracks
-    if (/repack|crack|fitgirl|dodi|skidrow|igg.game|ocean.game|steamunlock|pirat/i.test(h)) {
+    if (/repack|crack|fitgirl|dodi|skidrow|igg.game|ocean.game|steamunlock|pirat.*game|game.*pirat/i.test(h))
       return SAFE_ALTERNATIVES.gaming.slice(0, 4);
-    }
-    // Torrent / general piracy
-    if (/torrent|rarbg|piratebay|kickass|1337x|nyaa/i.test(h)) {
-      return SAFE_ALTERNATIVES.torrent.concat(SAFE_ALTERNATIVES.gaming.slice(0, 2));
-    }
-    // Illegal streaming / movies
-    if (/movie|film|watch|series|stream|flix|rockers|rulz|yogi|isai|kutta|moviesda|fmovie|gomovie|soap2|putlock|tamilrock/i.test(h)) {
-      return SAFE_ALTERNATIVES.streaming.slice(0, 4);
-    }
-    // Music piracy
-    if (/mp3|song|music|pagalworld|djpunjab|downloadhub.*music/i.test(h)) {
+    if (/torrent|rarbg|piratebay|kickass|1337x|nyaa|magnet/i.test(h))
+      return [...SAFE_ALTERNATIVES.torrent, ...SAFE_ALTERNATIVES.gaming.slice(0, 2)];
+    if (/movie|film|watch|series|stream|flix|rockers|rulz|yogi|isai|kutta|moviesda|fmovie|gomovie|soap2|putlock|tamilrock|bolly|tolly|hdmovie/i.test(h))
+      return SAFE_ALTERNATIVES.streaming.slice(0, 5);
+    if (/mp3|song|music|pagalworld|djpunjab|ringtone|audio.*download/i.test(h))
       return SAFE_ALTERNATIVES.music.slice(0, 4);
-    }
-    // Banking / KYC phishing
-    if (/bank|kyc|netbank|onlinebank|sbi|hdfc|icici|axis|kotak/i.test(h)) {
-      return SAFE_ALTERNATIVES.banking.slice(0, 3);
-    }
-    // Payment / UPI phishing
-    if (/pay|wallet|upi|transfer|money|paytm|phonepe/i.test(h)) {
+    if (/bank|kyc|netbank|onlinebank|sbi|hdfc|icici|axis|kotak|yesbank|pnb/i.test(h))
+      return SAFE_ALTERNATIVES.banking.slice(0, 4);
+    if (/pay|wallet|upi|transfer|money|paytm|phonepe|gpay|bhim/i.test(h))
       return SAFE_ALTERNATIVES.payment;
-    }
-    // Shopping
-    if (/shop|store|buy|cart|deal|offer|discount/i.test(h)) {
-      return SAFE_ALTERNATIVES.shopping.slice(0, 3);
-    }
-    // Social media impersonation
-    if (/insta|facebook|twitter|whatsapp|social/i.test(h)) {
-      return SAFE_ALTERNATIVES.social;
-    }
-    // Login / phishing keywords — suggest banking + payment
-    if (/login|signin|account|secure|verify|update|kyc|otp/i.test(h)) {
-      return [...SAFE_ALTERNATIVES.banking.slice(0, 2), ...SAFE_ALTERNATIVES.payment.slice(0, 1)];
-    }
-    // Default — show free streaming as most common use case
+    if (/shop|store|buy|cart|deal|offer|discount|sale|price|cheap/i.test(h))
+      return SAFE_ALTERNATIVES.shopping.slice(0, 4);
+    if (/insta|facebook|twitter|whatsapp|telegram|social|tiktok/i.test(h))
+      return SAFE_ALTERNATIVES.social.slice(0, 4);
+    if (/gmail|yahoo.*mail|outlook|webmail|mail.*login/i.test(h))
+      return SAFE_ALTERNATIVES.email;
+    if (/gov|irctc|aadhaar|aadhar|uidai|income.?tax|epfo|passport|digilock/i.test(h))
+      return SAFE_ALTERNATIVES.government.slice(0, 4);
+    if (/job|career|recruit|hire|vacancy|internship|fresher/i.test(h))
+      return SAFE_ALTERNATIVES.jobs.slice(0, 4);
+    if (/loan|credit|emi|finance|borrow|lend|interest/i.test(h))
+      return SAFE_ALTERNATIVES.loans;
+    if (/crypto|bitcoin|invest|trading|forex|nft|coin|token|profit|earn.*money/i.test(h))
+      return SAFE_ALTERNATIVES.crypto.slice(0, 4);
+    if (/course|certif|learn|study|exam|degree|college|university/i.test(h))
+      return SAFE_ALTERNATIVES.education.slice(0, 4);
+    if (/vpn|proxy|tunnel|privacy|anonymous/i.test(h))
+      return SAFE_ALTERNATIVES.vpn;
+    if (/download|software|apk|setup|install|crack.*app|app.*crack/i.test(h))
+      return SAFE_ALTERNATIVES.software.slice(0, 4);
+    if (/news|breaking|headline|viral|latest.*news/i.test(h))
+      return SAFE_ALTERNATIVES.news.slice(0, 3);
+    if (/dating|meet|single|match|romance|love.*online/i.test(h))
+      return SAFE_ALTERNATIVES.dating;
+    if (/login|signin|account|secure|verify|update|otp|pin|password/i.test(h))
+      return [...SAFE_ALTERNATIVES.banking.slice(0, 2), ...SAFE_ALTERNATIVES.payment.slice(0, 2)];
+    // Default — free streaming
     return SAFE_ALTERNATIVES.streaming.filter(s => s.free).slice(0, 3);
   }
 
