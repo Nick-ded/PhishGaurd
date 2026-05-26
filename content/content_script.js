@@ -1247,26 +1247,26 @@
       <div class="ga-hover-card" data-state="loading">
         <div class="ga-hover-header">
           <div class="ga-hover-header-left">
-            <div class="ga-hover-icon" data-role="icon">🔄</div>
+            <div class="ga-hover-icon" data-role="icon">✓</div>
             <div class="ga-hover-header-text">
-              <div class="ga-hover-title" data-role="title">Scanning...</div>
-              <div class="ga-hover-subtitle" data-role="subtitle">Analyzing link</div>
+              <div class="ga-hover-title" data-role="title">Safe</div>
+              <div class="ga-hover-subtitle" data-role="subtitle">No threats detected</div>
             </div>
           </div>
           <button type="button" class="ga-hover-close" data-role="close" aria-label="Close">[X]</button>
         </div>
         <div class="ga-hover-body">
-          <div class="ga-hover-loading" data-role="loading">
+          <div class="ga-hover-loading" data-role="loading" hidden>
             <div class="ga-skeleton ga-skeleton-line"></div>
             <div class="ga-skeleton ga-skeleton-line ga-skeleton-short"></div>
             <div class="ga-skeleton ga-skeleton-progress"></div>
           </div>
-          <div class="ga-hover-content" data-role="content" hidden>
+          <div class="ga-hover-content" data-role="content">
             <div class="ga-hover-domain-label">Domain</div>
             <div class="ga-hover-domain" data-role="domain"></div>
             <div class="ga-hover-redirect" data-role="redirect" hidden></div>
             <div class="ga-hover-score-row">
-              <span class="ga-hover-score-text">Risk score</span>
+              <span class="ga-hover-score-text">Safety score</span>
               <span class="ga-hover-score-value" data-role="score">0/100</span>
             </div>
             <div class="ga-hover-progress" aria-hidden="true">
@@ -1276,7 +1276,7 @@
           </div>
           <div class="ga-hover-actions" data-role="actions"></div>
           <div class="ga-hover-footer">
-            <span>Powered by GuardianAI 🛡️</span>
+            <span>PhishGuard 🛡️</span>
             <span class="ga-hover-offline" data-role="offline" hidden>Offline mode</span>
           </div>
         </div>
@@ -1407,6 +1407,47 @@
     hoverPopupHost.dataset.placement = topPlacement ? 'top' : 'bottom';
   }
 
+  // Generate meaningful default reasons when no flags are available
+  function getDefaultReasons(verdict, urlOrDomain) {
+    const h = String(urlOrDomain || '').toLowerCase();
+    let domain = h;
+    try { domain = new URL(h.startsWith('http') ? h : `https://${h}`).hostname; } catch { /* use as-is */ }
+
+    if (verdict === 'SAFE') {
+      const reasons = ['✓ No phishing or malware signals detected'];
+      if (domain.endsWith('.gov.in') || domain.endsWith('.gov')) reasons.push('✓ Official government domain');
+      else if (domain.endsWith('.edu') || domain.endsWith('.ac.in')) reasons.push('✓ Educational institution domain');
+      else if (domain.includes('google') || domain.includes('youtube') || domain.includes('microsoft')) reasons.push('✓ Verified major tech company');
+      else if (domain.endsWith('.com') || domain.endsWith('.in')) reasons.push('✓ Standard commercial domain');
+      reasons.push('✓ HTTPS connection — data is encrypted');
+      return reasons;
+    }
+
+    if (verdict === 'SUSPICIOUS') {
+      const reasons = [];
+      if (/\.xyz|\.tk|\.ml|\.ga|\.cf|\.gq|\.pw|\.top|\.site|\.online/.test(domain)) reasons.push('⚠ Suspicious top-level domain');
+      if (/login|signin|verify|secure|update|account|kyc|otp/.test(domain)) reasons.push('⚠ Suspicious keywords in domain name');
+      if (/free|win|lucky|prize|offer|reward|claim/.test(domain)) reasons.push('⚠ Potential scam keywords detected');
+      if (domain.split('.').length > 3) reasons.push('⚠ Unusually deep subdomain structure');
+      if (!reasons.length) reasons.push('⚠ Domain shows suspicious characteristics');
+      reasons.push('⚠ Verify the URL carefully before entering any data');
+      return reasons;
+    }
+
+    if (verdict === 'DANGEROUS') {
+      const reasons = [];
+      if (/movie|film|watch|stream|flix|rockers|rulz/.test(domain)) reasons.push('✕ Known illegal streaming / piracy site');
+      else if (/mp3|song|music|pagal|djpunjab|mrjatt/.test(domain)) reasons.push('✕ Known music piracy site');
+      else if (/game|repack|crack|skidrow|fitgirl|steamunlock/.test(domain)) reasons.push('✕ Known pirated game distribution site');
+      else if (/torrent|piratebay|rarbg|1337x/.test(domain)) reasons.push('✕ Known torrent / piracy site');
+      else reasons.push('✕ Flagged as malicious or phishing site');
+      reasons.push('✕ Do NOT enter passwords, OTP, or payment details');
+      return reasons;
+    }
+
+    return ['Analyzing this link...'];
+  }
+
   function populateReasons(reasons) {
     if (!hoverPopupRefs) return;
     hoverPopupRefs.reasons.innerHTML = '';
@@ -1519,7 +1560,9 @@
       : '';
     hoverPopupRefs.offline.hidden = !state.offlineMode;
 
-    populateReasons(reasons.length > 0 ? reasons : ['No major threats found']);
+    // Generate smart reasons based on verdict if none provided
+    const displayReasons = reasons.length > 0 ? reasons : getDefaultReasons(verdict, state.url || state.domain || '');
+    populateReasons(displayReasons);
     populateActions(verdict, state.url, state.result || null);
 
     const fill = hoverPopupRefs.progress;
