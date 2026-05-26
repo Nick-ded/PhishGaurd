@@ -80,6 +80,17 @@
   border-color: #97C459;
 }
 
+.pg-scanning {
+  background: transparent;
+  color: transparent;
+  border-color: transparent;
+  width: 8px;
+  min-width: 0;
+  padding: 2px 3px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .pg-warn {
   background: #FAEEDA;
   color: #633806;

@@ -222,6 +222,7 @@
   let currentPageResult = null;
   let warningOverlayShown = false;
   let extensionSettings = { hoverScan: true, overlay: true };
+  let navigationWarningShown = false;
 
   let hoverPopupHost = null;
   let hoverPopupRoot = null;
@@ -598,8 +599,385 @@
     }, (response) => {
       if (response && response.result) {
         currentPageResult = response.result;
+        
+        // Check if we should show navigation warning
+        checkNavigationWarning(response.result);
       }
     });
+  }
+
+  function checkNavigationWarning(result) {
+    // Don't show warning if already shown for this page
+    if (navigationWarningShown) return;
+    
+    // Don't show warning if overlay is disabled
+    if (!extensionSettings.overlay) return;
+    
+    // Only show for dangerous or suspicious sites
+    if (!result || (result.verdict !== 'DANGEROUS' && result.verdict !== 'SUSPICIOUS')) return;
+    
+    // Don't show on trusted domains
+    if (result.trusted) return;
+    
+    navigationWarningShown = true;
+    showNavigationWarning(result);
+  }
+
+  // ── Navigation warning and link interception ─────────────────
+  function interceptDangerousLinks() {
+    document.addEventListener('click', async (e) => {
+      const link = e.target.closest('a[href]');
+      if (!link) return;
+      
+      const url = getLinkUrl(link);
+      if (!url) return;
+      
+      // Don't intercept same-domain links
+      try {
+        const linkDomain = new URL(url).hostname;
+        const currentDomain = location.hostname;
+        if (linkDomain === currentDomain) return;
+      } catch {
+        return;
+      }
+      
+      // Quick scan the link
+      const result = quickURLScan(url);
+      
+      // Only intercept dangerous or suspicious links
+      if (result.verdict !== 'DANGEROUS' && result.verdict !== 'SUSPICIOUS') return;
+      
+      // Don't intercept trusted domains
+      if (result.trusted) return;
+      
+      // Don't intercept if overlay is disabled
+      if (!extensionSettings.overlay) return;
+      
+      // Prevent navigation
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Show warning for the target URL
+      showLinkWarning(url, result);
+    }, true); // Use capture phase to catch before other handlers
+  }
+
+  function showLinkWarning(targetUrl, result) {
+    // Create overlay backdrop
+    const overlay = document.createElement('div');
+    overlay.id = 'pg-link-warning-overlay';
+    overlay.style.cssText = `
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      background: rgba(0, 0, 0, 0.8) !important;
+      z-index: 2147483647 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 20px !important;
+      box-sizing: border-box !important;
+      font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif !important;
+    `;
+
+    // Create warning modal
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      background: linear-gradient(180deg, #fbfaf5 0%, #f3efe3 100%) !important;
+      border-radius: 20px !important;
+      border: 1px solid #d8d2c1 !important;
+      box-shadow: 0 12px 30px rgba(35, 47, 24, 0.12) !important;
+      max-width: 480px !important;
+      width: 100% !important;
+      padding: 24px !important;
+      position: relative !important;
+      animation: pgModalIn 0.2s ease-out !important;
+      color: #1f2a19 !important;
+    `;
+
+    const isDangerous = result.verdict === 'DANGEROUS';
+    const iconColor = isDangerous ? '#A32D2D' : '#BA7517';
+    const titleColor = isDangerous ? '#A32D2D' : '#BA7517';
+    const title = isDangerous ? 'Dangerous Link Blocked' : 'Suspicious Link Detected';
+    const subtitle = isDangerous ? 'This link leads to a dangerous website' : 'This link shows warning signs and needs review';
+
+    modal.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <div style="width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: ${isDangerous ? 'rgba(163, 45, 45, 0.12)' : 'rgba(186, 117, 23, 0.12)'}; color: ${iconColor};">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            ${isDangerous 
+              ? '<circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8" stroke-width="2.4" stroke-linecap="round"/>'
+              : '<circle cx="12" cy="12" r="9"/><path d="M7.5 7.5 16.5 16.5" stroke-width="2.4" stroke-linecap="round"/>'
+            }
+          </svg>
+        </div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 18px; font-weight: 800; line-height: 1.2; margin-bottom: 4px; color: ${titleColor};">
+            ${title}
+          </div>
+          <div style="font-size: 14px; color: #5f6d58; line-height: 1.4;">
+            ${subtitle}
+          </div>
+        </div>
+      </div>
+
+      <div style="background: #eef3e7; border: 1px solid #d8d2c1; border-radius: 12px; padding: 12px; margin: 16px 0; word-break: break-all; font-size: 13px; color: #5f6d58;">
+        ${escHtml(targetUrl)}
+      </div>
+
+      <div style="background: #f8f6ef; border: 1px solid rgba(94, 107, 86, 0.12); border-radius: 14px; padding: 14px; margin: 16px 0;">
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #1f2a19;">
+          Why is this link flagged?
+        </div>
+        <ul style="list-style: none; margin: 0; padding: 0;">
+          ${(result.flags || ['Unknown threat detected']).slice(0, 5).map(flag => `
+            <li style="font-size: 12px; color: #5f6d58; line-height: 1.4; margin-bottom: 4px; padding-left: 16px; position: relative;">
+              <span style="position: absolute; left: 0; color: ${iconColor}; font-weight: bold;">•</span>
+              ${escHtml(flag)}
+            </li>
+          `).join('')}
+        </ul>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-top: 20px;">
+        <button id="pg-cancel-btn" style="flex: 1; padding: 12px 16px; border: 0; border-radius: 14px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; background: #27500A; color: #f4f9ee; transition: transform 120ms ease;">
+          Cancel
+        </button>
+        <button id="pg-visit-btn" style="flex: 1; padding: 12px 16px; border: 1px solid rgba(163, 45, 45, 0.2); border-radius: 14px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; background: rgba(163, 45, 45, 0.08); color: #A32D2D; transition: transform 120ms ease;">
+          Visit Anyway
+        </button>
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(94, 107, 86, 0.12); font-size: 11px; color: #7f8a78;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="color: #27500A;">
+          <path d="M12 2 4 5v6c0 5 3.2 9.4 8 11 4.8-1.6 8-6 8-11V5l-8-3Zm-1 12.4-2.6-2.6 1.4-1.4L11 11.6l4.2-4.2 1.4 1.4-5.6 5.6Z"/>
+        </svg>
+        Protected by PhishGuard
+      </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Add button hover effects
+    const cancelBtn = modal.querySelector('#pg-cancel-btn');
+    const visitBtn = modal.querySelector('#pg-visit-btn');
+
+    [cancelBtn, visitBtn].forEach(btn => {
+      btn.addEventListener('mouseenter', () => {
+        btn.style.transform = 'translateY(-1px)';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.transform = 'translateY(0)';
+      });
+    });
+
+    // Event handlers
+    cancelBtn.addEventListener('click', () => {
+      overlay.remove();
+    });
+
+    visitBtn.addEventListener('click', () => {
+      overlay.remove();
+      // Navigate to the target URL
+      window.location.href = targetUrl;
+    });
+
+    // Keyboard shortcuts
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelBtn.click();
+      } else if (e.key === 'Enter' && e.ctrlKey) {
+        e.preventDefault();
+        visitBtn.click();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeydown);
+
+    // Clean up event listener when overlay is removed
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.removedNodes.forEach((node) => {
+          if (node === overlay) {
+            document.removeEventListener('keydown', handleKeydown);
+            observer.disconnect();
+          }
+        });
+      });
+    });
+    observer.observe(document.body, { childList: true });
+  }
+    // Create overlay backdrop
+    const overlay = document.createElement('div');
+    overlay.id = 'pg-navigation-warning-overlay';
+    overlay.style.cssText = `
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      background: rgba(0, 0, 0, 0.8) !important;
+      z-index: 2147483647 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 20px !important;
+      box-sizing: border-box !important;
+      font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif !important;
+    `;
+
+    // Create warning modal
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      background: linear-gradient(180deg, #fbfaf5 0%, #f3efe3 100%) !important;
+      border-radius: 20px !important;
+      border: 1px solid #d8d2c1 !important;
+      box-shadow: 0 12px 30px rgba(35, 47, 24, 0.12) !important;
+      max-width: 480px !important;
+      width: 100% !important;
+      padding: 24px !important;
+      position: relative !important;
+      animation: pgModalIn 0.2s ease-out !important;
+      color: #1f2a19 !important;
+    `;
+
+    // Add animation keyframes
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes pgModalIn {
+        from {
+          opacity: 0;
+          transform: scale(0.95) translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
+      }
+    `;
+    document.head.appendChild(style);
+
+    const isDangerous = result.verdict === 'DANGEROUS';
+    const iconColor = isDangerous ? '#A32D2D' : '#BA7517';
+    const titleColor = isDangerous ? '#A32D2D' : '#BA7517';
+    const title = isDangerous ? 'Dangerous Website Detected' : 'Suspicious Website Detected';
+    const subtitle = isDangerous ? 'This website contains threats and should be avoided' : 'This website shows warning signs and needs review';
+
+    modal.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <div style="width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: ${isDangerous ? 'rgba(163, 45, 45, 0.12)' : 'rgba(186, 117, 23, 0.12)'}; color: ${iconColor};">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            ${isDangerous 
+              ? '<circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8" stroke-width="2.4" stroke-linecap="round"/>'
+              : '<circle cx="12" cy="12" r="9"/><path d="M7.5 7.5 16.5 16.5" stroke-width="2.4" stroke-linecap="round"/>'
+            }
+          </svg>
+        </div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 18px; font-weight: 800; line-height: 1.2; margin-bottom: 4px; color: ${titleColor};">
+            ${title}
+          </div>
+          <div style="font-size: 14px; color: #5f6d58; line-height: 1.4;">
+            ${subtitle}
+          </div>
+        </div>
+      </div>
+
+      <div style="background: #eef3e7; border: 1px solid #d8d2c1; border-radius: 12px; padding: 12px; margin: 16px 0; word-break: break-all; font-size: 13px; color: #5f6d58;">
+        ${escHtml(window.location.href)}
+      </div>
+
+      <div style="background: #f8f6ef; border: 1px solid rgba(94, 107, 86, 0.12); border-radius: 14px; padding: 14px; margin: 16px 0;">
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #1f2a19;">
+          Why is this site flagged?
+        </div>
+        <ul style="list-style: none; margin: 0; padding: 0;">
+          ${(result.flags || ['Unknown threat detected']).slice(0, 5).map(flag => `
+            <li style="font-size: 12px; color: #5f6d58; line-height: 1.4; margin-bottom: 4px; padding-left: 16px; position: relative;">
+              <span style="position: absolute; left: 0; color: ${iconColor}; font-weight: bold;">•</span>
+              ${escHtml(flag)}
+            </li>
+          `).join('')}
+        </ul>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-top: 20px;">
+        <button id="pg-go-back-btn" style="flex: 1; padding: 12px 16px; border: 0; border-radius: 14px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; background: #27500A; color: #f4f9ee; transition: transform 120ms ease;">
+          ← Go Back Safely
+        </button>
+        <button id="pg-continue-btn" style="flex: 1; padding: 12px 16px; border: 1px solid rgba(163, 45, 45, 0.2); border-radius: 14px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; background: rgba(163, 45, 45, 0.08); color: #A32D2D; transition: transform 120ms ease;">
+          Continue Anyway
+        </button>
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(94, 107, 86, 0.12); font-size: 11px; color: #7f8a78;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="color: #27500A;">
+          <path d="M12 2 4 5v6c0 5 3.2 9.4 8 11 4.8-1.6 8-6 8-11V5l-8-3Zm-1 12.4-2.6-2.6 1.4-1.4L11 11.6l4.2-4.2 1.4 1.4-5.6 5.6Z"/>
+        </svg>
+        Protected by PhishGuard
+      </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Add button hover effects
+    const goBackBtn = modal.querySelector('#pg-go-back-btn');
+    const continueBtn = modal.querySelector('#pg-continue-btn');
+
+    [goBackBtn, continueBtn].forEach(btn => {
+      btn.addEventListener('mouseenter', () => {
+        btn.style.transform = 'translateY(-1px)';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.transform = 'translateY(0)';
+      });
+    });
+
+    // Event handlers
+    goBackBtn.addEventListener('click', () => {
+      overlay.remove();
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.close();
+      }
+    });
+
+    continueBtn.addEventListener('click', () => {
+      overlay.remove();
+      navigationWarningShown = false; // Allow user to continue
+    });
+
+    // Keyboard shortcuts
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        goBackBtn.click();
+      } else if (e.key === 'Enter' && e.ctrlKey) {
+        e.preventDefault();
+        continueBtn.click();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeydown);
+
+    // Clean up event listener when overlay is removed
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.removedNodes.forEach((node) => {
+          if (node === overlay) {
+            document.removeEventListener('keydown', handleKeydown);
+            observer.disconnect();
+          }
+        });
+      });
+    });
+    observer.observe(document.body, { childList: true });
   }
 
   function buildPageSignals() {
@@ -891,36 +1269,22 @@
     wrap.className = 'pg-link-badge-wrap';
     wrap.setAttribute('aria-hidden', 'true');
 
-    const result = quickURLScan(urlString);
-    const tier = getVerdictTier(result.verdict || 'SAFE');
-
+    // Start with a neutral scanning badge — no green/red until scan completes
     const badge = document.createElement('span');
-    badge.className = 'pg-badge';
-    badge.classList.add(`pg-${tier}`);
-    const safeLabel = getVerdictBadgeText(result.verdict || 'SAFE');
-    const rawThreat = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
-    const safetyScoreBadge = toSafetyScore(rawThreat, result.verdict || 'SAFE', urlString);
-    badge.innerHTML = result.verdict === 'SAFE' || !result.verdict
-      ? `${getVerdictIconSvg(tier)}<span>${escHtml(safeLabel)}</span>`
-      : `${getVerdictIconSvg(tier)}<span>${escHtml(safeLabel)}</span><span>·</span><span>${safetyScoreBadge}</span>`;
+    badge.className = 'pg-badge pg-scanning';
+    badge.innerHTML = `<span>·</span>`;
 
     const tooltip = document.createElement('span');
     tooltip.className = 'pg-badge-tooltip';
     tooltip.setAttribute('role', 'tooltip');
     tooltip.setAttribute('aria-hidden', 'true');
-    tooltip.innerHTML = buildTooltipMarkup(result, getDisplayDomain(link.href || getLinkUrl(link)));
 
     wrap.appendChild(badge);
     wrap.appendChild(tooltip);
     link.insertAdjacentElement('afterend', wrap);
 
-    const showTooltip = () => {
-      wrap.classList.add('pg-tooltip-open');
-    };
-
-    const hideTooltip = () => {
-      wrap.classList.remove('pg-tooltip-open');
-    };
+    const showTooltip = () => wrap.classList.add('pg-tooltip-open');
+    const hideTooltip = () => wrap.classList.remove('pg-tooltip-open');
 
     badge.addEventListener('pointerenter', () => {
       showTooltip();
@@ -935,6 +1299,21 @@
 
     wrap.dataset.gaBadgeFor = urlString;
     wrap.dataset.gaBadgeInitialized = 'true';
+
+    // Async scan — update badge once result is ready
+    scanHoverUrl(urlString).then((result) => {
+      if (!wrap.isConnected || wrap.dataset.gaBadgeFor !== urlString) return;
+      const tier = getVerdictTier(result.verdict || 'SAFE');
+      const label = getVerdictBadgeText(result.verdict || 'SAFE');
+      const rawThreat = Math.max(0, Math.min(100, Number(result.score ?? result.urlScore ?? 0)));
+      const safetyScoreBadge = toSafetyScore(rawThreat, result.verdict || 'SAFE', urlString);
+      badge.className = `pg-badge pg-${tier}`;
+      badge.innerHTML = result.verdict === 'SAFE' || !result.verdict
+        ? `${getVerdictIconSvg(tier)}<span>${escHtml(label)}</span>`
+        : `${getVerdictIconSvg(tier)}<span>${escHtml(label)}</span><span>·</span><span>${safetyScoreBadge}</span>`;
+      tooltip.innerHTML = buildTooltipMarkup(result, getDisplayDomain(urlString));
+    }).catch(() => {});
+
     return wrap;
   }
 
@@ -2069,11 +2448,13 @@
         observeLinks();
         observeGoogleSerp();
         runPageScan();
+        interceptDangerousLinks();
       });
     } else {
       observeLinks();
       observeGoogleSerp();
       runPageScan();
+      interceptDangerousLinks();
     }
   }
 
