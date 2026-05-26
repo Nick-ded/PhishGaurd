@@ -221,6 +221,7 @@
 
   let currentPageResult = null;
   let warningOverlayShown = false;
+  let navigationWarningShown = false;
   let extensionSettings = { hoverScan: true, overlay: true };
   let navigationWarningShown = false;
 
@@ -2158,6 +2159,11 @@
     });
 
     link.addEventListener('click', (event) => {
+      // Show hover popup on click
+      clearTimeout(hoverState.timer);
+      clearTimeout(hoverState.hideDelay);
+      showHoverPopup(link, event).catch(() => {});
+      
       const href = getLinkUrl(link);
       if (!href) return;
 
